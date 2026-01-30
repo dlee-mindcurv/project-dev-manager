@@ -9,7 +9,7 @@ export function TaskList() {
   if (tasks.length === 0) {
     return (
       <div className="text-center py-12">
-        <div className="text-gray-400 mb-4">
+        <div className="text-gray-400 dark:text-gray-600 mb-4">
           <svg
             className="mx-auto h-12 w-12"
             fill="none"
@@ -24,8 +24,8 @@ export function TaskList() {
             />
           </svg>
         </div>
-        <h3 className="text-lg font-medium text-gray-900 mb-1">No tasks yet</h3>
-        <p className="text-gray-500">Create your first task to get started!</p>
+        <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-1">No tasks yet</h3>
+        <p className="text-gray-500 dark:text-gray-400">Create your first task to get started!</p>
       </div>
     );
   }
@@ -33,7 +33,7 @@ export function TaskList() {
   if (filteredTasks.length === 0) {
     return (
       <div className="text-center py-12">
-        <p className="text-gray-500">No tasks match your current filters.</p>
+        <p className="text-gray-500 dark:text-gray-400">No tasks match your current filters.</p>
       </div>
     );
   }

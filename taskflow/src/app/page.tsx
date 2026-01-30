@@ -14,8 +14,8 @@ export default function Home() {
             <div className="md:hidden mb-4">
               <Logo size="lg" />
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 hidden md:block">TaskFlow</h1>
-            <p className="text-gray-600 mt-1">
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 hidden md:block">TaskFlow</h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">
               Organize your tasks, focus on what matters.
             </p>
           </header>

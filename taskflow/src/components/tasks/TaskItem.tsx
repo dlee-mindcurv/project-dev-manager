@@ -18,22 +18,22 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
 
   return (
     <div
-      className={`bg-white border rounded-lg p-4 transition-all ${
+      className={`bg-white dark:bg-gray-800 border rounded-lg p-4 transition-all ${
         task.completed ? 'opacity-60' : ''
-      } ${overdue ? 'border-red-300' : 'border-gray-200'}`}
+      } ${overdue ? 'border-red-300 dark:border-red-700' : 'border-gray-200 dark:border-gray-700'}`}
     >
       <div className="flex items-start gap-3">
         <input
           type="checkbox"
           checked={task.completed}
           onChange={() => toggleTask(task.id)}
-          className="mt-1 h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+          className="mt-1 h-5 w-5 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 cursor-pointer dark:bg-gray-700"
         />
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3
-              className={`font-medium text-gray-900 ${
+              className={`font-medium text-gray-900 dark:text-gray-100 ${
                 task.completed ? 'line-through' : ''
               }`}
             >
@@ -45,7 +45,7 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
 
           {task.description && (
             <p
-              className={`mt-1 text-sm text-gray-600 ${
+              className={`mt-1 text-sm text-gray-600 dark:text-gray-400 ${
                 isExpanded ? '' : 'line-clamp-2'
               }`}
               onClick={() => setIsExpanded(!isExpanded)}
@@ -54,9 +54,9 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
             </p>
           )}
 
-          <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
+          <div className="mt-2 flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
             {task.dueDate && (
-              <span className={overdue ? 'text-red-600 font-medium' : ''}>
+              <span className={overdue ? 'text-red-600 dark:text-red-400 font-medium' : ''}>
                 Due: {formatDate(task.dueDate)}
               </span>
             )}
@@ -65,7 +65,7 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
                 {task.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="bg-gray-100 px-1.5 py-0.5 rounded"
+                    className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded"
                   >
                     {tag}
                   </span>
@@ -79,7 +79,7 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
           variant="ghost"
           size="sm"
           onClick={() => deleteTask(task.id)}
-          className="text-gray-400 hover:text-red-600"
+          className="text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
