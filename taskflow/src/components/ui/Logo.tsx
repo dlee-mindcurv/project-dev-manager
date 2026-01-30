@@ -33,7 +33,7 @@ export function Logo({ size = 'md', variant = 'full', className = '' }: LogoProp
         </svg>
       </div>
       {variant === 'full' && (
-        <span className={`${textSize} font-semibold text-gray-900`}>
+        <span className={`${textSize} font-semibold text-gray-900 dark:text-gray-100`}>
           TaskFlow
         </span>
       )}

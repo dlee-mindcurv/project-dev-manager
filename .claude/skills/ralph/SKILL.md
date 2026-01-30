@@ -106,7 +106,7 @@ For stories with testable logic, also include:
 "Tests pass"
 ```
 
-### For stories that change UI, also include:
+### For stories that change UI, and if it the ONLY or LAST story in the queue, also include:
 ```
 "Verify in browser using dev-browser skill"
 ```

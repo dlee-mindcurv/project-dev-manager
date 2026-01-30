@@ -82,11 +82,95 @@ with sync_playwright() as p:
 
 ## Best Practices
 
-- **Use bundled scripts as black boxes** - To accomplish a task, consider whether one of the scripts available in `scripts/` can help. These scripts handle common, complex workflows reliably without cluttering the context window. Use `--help` to see usage, then invoke directly. 
+- **Use bundled scripts as black boxes** - To accomplish a task, consider whether one of the scripts available in `scripts/` can help. These scripts handle common, complex workflows reliably without cluttering the context window. Use `--help` to see usage, then invoke directly.
 - Use `sync_playwright()` for synchronous scripts
 - Always close the browser when done
 - Use descriptive selectors: `text=`, `role=`, CSS selectors, or IDs
 - Add appropriate waits: `page.wait_for_selector()` or `page.wait_for_timeout()`
+
+## Console Error Checking (Required for Verification)
+
+When performing browser verification for Ralph stories, you MUST capture and check console errors.
+
+**Required pattern:**
+
+```python
+from playwright.sync_api import sync_playwright
+
+console_errors = []
+
+def handle_console(msg):
+    if msg.type in ("error", "warning"):
+        console_errors.append(f"[{msg.type}] {msg.text}")
+        print(f"Console {msg.type}: {msg.text}")
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=True)
+    page = browser.new_page()
+
+    # Attach console handler BEFORE navigation
+    page.on("console", handle_console)
+
+    page.goto('http://localhost:3000')
+    page.wait_for_load_state('networkidle')
+
+    # ... verification logic ...
+
+    # REQUIRED: Check for console errors at end
+    if console_errors:
+        print(f"FAIL: Console errors detected: {console_errors}")
+        exit(1)
+
+    print("PASS: No console errors")
+    browser.close()
+```
+
+**Critical errors that MUST fail verification:**
+- React hydration mismatches ("A tree hydrated but...")
+- Uncaught exceptions
+- Failed network requests
+- Component render errors
+
+## Functional Verification (Required for UI Stories)
+
+Beyond checking for errors, you MUST verify that UI interactions produce the expected visual changes.
+
+**Required pattern for toggle/switch features:**
+
+```python
+from playwright.sync_api import sync_playwright
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=True)
+    page = browser.new_page()
+    page.goto('http://localhost:3000')
+    page.wait_for_load_state('networkidle')
+
+    # Capture BEFORE state
+    before_bg = page.evaluate("getComputedStyle(document.body).backgroundColor")
+    print(f"Before toggle: {before_bg}")
+
+    # Perform action
+    page.click('[aria-label*="theme"], [aria-label*="dark"], [aria-label*="mode"]')
+    page.wait_for_timeout(500)  # Allow for transitions
+
+    # Capture AFTER state
+    after_bg = page.evaluate("getComputedStyle(document.body).backgroundColor")
+    print(f"After toggle: {after_bg}")
+
+    # REQUIRED: Verify visual change occurred
+    if before_bg == after_bg:
+        print("FAIL: Toggle did not produce visual change")
+        exit(1)
+
+    print("PASS: Visual change confirmed")
+    browser.close()
+```
+
+**This catches silent failures like:**
+- Missing CSS configuration (Tailwind v4 dark mode)
+- Broken state management
+- CSS selectors not matching
 
 ## Reference Files
 

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { TaskProvider } from '@/context/TaskContext';
+import { ThemeProvider } from '@/context/ThemeContext';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -27,9 +28,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-100`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-100 dark:bg-gray-950`}
       >
-        <TaskProvider>{children}</TaskProvider>
+        <ThemeProvider>
+          <TaskProvider>{children}</TaskProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

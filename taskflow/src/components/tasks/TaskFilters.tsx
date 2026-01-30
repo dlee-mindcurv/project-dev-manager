@@ -57,7 +57,7 @@ export function TaskFilters() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between text-sm text-gray-600">
+      <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
         <div className="flex gap-4">
           <span>{activeCount} active</span>
           <span>{completedCount} completed</span>
