@@ -99,3 +99,13 @@ Before saving the PRD:
 - [ ] Functional requirements are numbered and unambiguous
 - [ ] Non-goals section defines clear boundaries
 - [ ] Saved to `product-development/features/$ARGUMENTS/prd.md`
+
+## Next Step
+
+After successfully saving the PRD, automatically run the `/create-prd-json` command to generate the Ralph-compatible prd.json:
+
+```
+/create-prd-json $ARGUMENTS
+```
+
+This converts the PRD into the structured JSON format needed for autonomous execution with Ralph.

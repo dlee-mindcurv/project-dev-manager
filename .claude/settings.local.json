@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./scripts/acquire-feature.sh:*)",
+      "Skill(create-prd)",
+      "Skill(create-prd-json)",
+      "Bash(claude --dangerously-skip-permissions --print)",
+      "Bash(./scripts/ralph.sh:*)",
+      "Bash(claude --print)",
+      "Bash(claude:*)",
+      "Skill(ralph-execute)"
+    ]
+  }
+}
