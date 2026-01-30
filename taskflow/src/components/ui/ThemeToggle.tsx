@@ -1,9 +1,29 @@
 'use client';
 
 import { useTheme } from '@/context/ThemeContext';
+import { useEffect, useState } from 'react';
 
 export function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    // This is necessary to prevent hydration mismatches with server-rendered content
+    // eslint-disable-next-line
+    setMounted(true);
+  }, []);
+
+  // Prevent hydration mismatch by not rendering theme-dependent content until mounted
+  if (!mounted) {
+    return (
+      <button
+        className="p-2 rounded-lg text-gray-600 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+        aria-label="Toggle theme"
+      >
+        <div className="h-5 w-5" />
+      </button>
+    );
+  }
 
   return (
     <button
