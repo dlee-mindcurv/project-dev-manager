@@ -8,7 +8,9 @@
       "Bash(./scripts/ralph.sh:*)",
       "Bash(claude --print)",
       "Bash(claude:*)",
-      "Skill(ralph-execute)"
+      "Skill(ralph-execute)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
