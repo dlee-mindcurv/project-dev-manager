@@ -285,5 +285,5 @@ After saving prd.json, inform the user they can now run Ralph to execute the sto
 Or directly via script:
 
 ```bash
-./scripts/ralph.sh --feature $ARGUMENTS
+./scripts/generate-feature-code.sh --feature $ARGUMENTS
 ```
