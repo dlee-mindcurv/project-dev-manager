@@ -80,13 +80,13 @@ jq -r '.userStories[] | select(.passes == false) | .id + ": " + .title' product-
 Execute the Ralph orchestrator:
 
 ```bash
-./scripts/ralph.sh --feature $FEATURE_ID
+./scripts/generate-feature-code.sh --feature $FEATURE_ID
 ```
 
 **Optional: Custom max iterations**
 
 ```bash
-./scripts/ralph.sh --feature $FEATURE_ID --max-iterations 20
+./scripts/generate-feature-code.sh --feature $FEATURE_ID --max-iterations 20
 ```
 
 ---
