@@ -77,6 +77,7 @@ PRD_JSON="$FEATURE_DIR/prd.json"
 PROGRESS_FILE="$FEATURE_DIR/progress.txt"
 LAST_BRANCH_FILE="$FEATURE_DIR/.last-branch"
 ARCHIVE_DIR="$FEATURE_DIR/archive"
+PROJECT_LEARNINGS="$PROJECT_ROOT/LEARNINGS.md"
 
 # Validate feature directory exists
 if [[ ! -d "$FEATURE_DIR" ]]; then
@@ -112,6 +113,22 @@ EOF
     fi
 }
 
+# Initialize LEARNINGS.md if it doesn't exist
+init_project_learnings() {
+    if [[ ! -f "$PROJECT_LEARNINGS" ]]; then
+        cat > "$PROJECT_LEARNINGS" << 'HEADER'
+# Project Learnings
+
+Accumulated codebase patterns and insights discovered during feature implementations.
+Each section represents learnings from a completed feature.
+
+---
+
+HEADER
+        echo -e "${GREEN}✓ Initialized LEARNINGS.md${NC}"
+    fi
+}
+
 # Archive previous run if branch changed
 archive_previous_run() {
     if [[ -f "$LAST_BRANCH_FILE" && -f "$PRD_JSON" ]]; then
@@ -144,6 +161,26 @@ update_last_branch() {
     if [[ -n "$branch" ]]; then
         echo "$branch" > "$LAST_BRANCH_FILE"
     fi
+}
+
+# Append learnings to project-level file when feature completes
+append_to_project_learnings() {
+    local feature_name=$(jq -r '.featureName' "$PRD_JSON")
+    local timestamp=$(date '+%Y-%m-%d')
+
+    # Add feature header
+    echo "" >> "$PROJECT_LEARNINGS"
+    echo "## $feature_name ($timestamp)" >> "$PROJECT_LEARNINGS"
+    echo "" >> "$PROJECT_LEARNINGS"
+
+    # Extract content between "## Codebase Patterns" and "---"
+    # Skip the header line and the trailing separator
+    sed -n '/^## Codebase Patterns$/,/^---$/p' "$PROGRESS_FILE" | \
+        sed '1d;$d' >> "$PROJECT_LEARNINGS"
+
+    echo "---" >> "$PROJECT_LEARNINGS"
+
+    echo -e "${GREEN}✓ Appended learnings to LEARNINGS.md${NC}"
 }
 
 # Count incomplete stories
@@ -196,9 +233,20 @@ print_status() {
 
 # Build the prompt for Claude
 build_prompt() {
+    local is_first_story="$1"
+    local learnings_instruction=""
+
+    if [[ "$is_first_story" == "true" && -f "$PROJECT_LEARNINGS" ]]; then
+        learnings_instruction="
+IMPORTANT: This is the first story of this feature.
+Read the project learnings file first: $PROJECT_LEARNINGS
+Apply relevant patterns from previous features to this implementation.
+"
+    fi
+
     cat << EOF
 You are executing the Ralph autonomous agent loop for feature: $FEATURE_ID
-
+$learnings_instruction
 IMPORTANT: Read and follow these instructions exactly.
 
 ## Your Task This Iteration
@@ -266,6 +314,7 @@ main() {
     # Initialize
     archive_previous_run
     init_progress_file
+    init_project_learnings
     update_last_branch
 
     print_status
@@ -279,6 +328,9 @@ main() {
 
     echo -e "${BLUE}Starting iteration loop (max: $MAX_ITERATIONS)${NC}"
     echo ""
+
+    # Track first story for LEARNINGS.md reading
+    local first_story_done=false
 
     # Main loop
     for i in $(seq 1 $MAX_ITERATIONS); do
@@ -297,8 +349,15 @@ main() {
         echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo ""
 
+        # Determine if this is the first story of the feature
+        local is_first="false"
+        if [[ "$first_story_done" == "false" ]]; then
+            is_first="true"
+            first_story_done=true
+        fi
+
         # Build prompt and run Claude
-        local prompt=$(build_prompt)
+        local prompt=$(build_prompt "$is_first")
 
         # Run Claude with --dangerously-skip-permissions, model selection, and capture output
         local output
@@ -306,6 +365,9 @@ main() {
 
         # Check for completion signal
         if echo "$output" | grep -q "<promise>COMPLETE</promise>"; then
+            # Append learnings to project-level file
+            append_to_project_learnings
+
             echo ""
             echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════╗${NC}"
             echo -e "${GREEN}║                    ALL STORIES COMPLETE!                      ║${NC}"
