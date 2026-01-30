@@ -1,0 +1,697 @@
+#!/bin/bash
+
+# PDM - Project Dev Manager
+# Global CLI tool for autonomous feature development
+# Installs skills and commands to ~/.claude/ with pdm- prefixes
+
+set -e
+
+VERSION="1.0.0"
+CLAUDE_DIR="$HOME/.claude"
+SKILLS_DIR="$CLAUDE_DIR/skills"
+COMMANDS_DIR="$CLAUDE_DIR/commands"
+PDM_REPO="dlee-mindcurv/pdm-tools"
+RAW_BASE="https://raw.githubusercontent.com/$PDM_REPO/main"
+ARCHIVE_URL="https://github.com/$PDM_REPO/archive/refs/heads/main.tar.gz"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Print usage
+usage() {
+    echo ""
+    echo -e "${BLUE}PDM - Project Dev Manager${NC} v${VERSION}"
+    echo ""
+    echo "Usage: pdm <command> [options]"
+    echo ""
+    echo -e "${CYAN}Installation Commands:${NC}"
+    echo "  --install [type]     Install skills and commands to ~/.claude/"
+    echo "                       type: 'skills', 'commands', or omit for all"
+    echo "  --update             Force re-download everything"
+    echo "  --uninstall          Remove all pdm-* skills and commands"
+    echo ""
+    echo -e "${CYAN}Info Commands:${NC}"
+    echo "  --list               Show installed pdm-* items"
+    echo "  --check              Verify dependencies (Claude CLI, Node, Git, curl)"
+    echo ""
+    echo -e "${CYAN}Feature Execution:${NC}"
+    echo "  --feature, -f <id>   Run Ralph on feature"
+    echo "  --max-iterations <n> Max iterations for feature execution (default: 10)"
+    echo ""
+    echo -e "${CYAN}Meta:${NC}"
+    echo "  --version, -v        Show version"
+    echo "  --help, -h           Show this help message"
+    echo ""
+    echo -e "${CYAN}Examples:${NC}"
+    echo "  pdm --install              # Install all skills and commands"
+    echo "  pdm --install skills       # Install only skills"
+    echo "  pdm --list                 # Show installed items"
+    echo "  pdm -f add-logo            # Execute Ralph on 'add-logo' feature"
+    echo "  pdm -f add-logo --max-iterations 20"
+    echo ""
+}
+
+# JSON helper using Node.js (eliminates jq dependency)
+json_get() {
+    local file="$1"
+    local path="$2"
+    node -e "console.log(JSON.parse(require('fs').readFileSync('$file','utf8'))$path || '')" 2>/dev/null
+}
+
+json_array_length() {
+    local file="$1"
+    local path="$2"
+    node -e "console.log(JSON.parse(require('fs').readFileSync('$file','utf8'))$path.length)" 2>/dev/null
+}
+
+json_array_item() {
+    local file="$1"
+    local path="$2"
+    local index="$3"
+    local prop="$4"
+    node -e "console.log(JSON.parse(require('fs').readFileSync('$file','utf8'))$path[$index].$prop || '')" 2>/dev/null
+}
+
+# Check dependencies
+cmd_check() {
+    echo ""
+    echo -e "${BLUE}Checking PDM dependencies...${NC}"
+    echo ""
+
+    local all_ok=true
+
+    # Claude CLI
+    if command -v claude &> /dev/null; then
+        local claude_version=$(claude --version 2>&1 | head -1 || echo "unknown")
+        echo -e "${GREEN}✓${NC} Claude CLI: $claude_version"
+    else
+        echo -e "${RED}✗${NC} Claude CLI: not found"
+        echo "  Install from: https://github.com/anthropics/claude-code"
+        all_ok=false
+    fi
+
+    # Node.js
+    if command -v node &> /dev/null; then
+        local node_version=$(node --version)
+        echo -e "${GREEN}✓${NC} Node.js: $node_version"
+
+        # Check version >= 18
+        local major_version=$(echo "$node_version" | sed 's/v//' | cut -d. -f1)
+        if [[ "$major_version" -lt 18 ]]; then
+            echo -e "  ${YELLOW}Warning: Node.js 18+ recommended${NC}"
+        fi
+    else
+        echo -e "${RED}✗${NC} Node.js: not found"
+        all_ok=false
+    fi
+
+    # Git
+    if command -v git &> /dev/null; then
+        local git_version=$(git --version | sed 's/git version //')
+        echo -e "${GREEN}✓${NC} Git: $git_version"
+    else
+        echo -e "${RED}✗${NC} Git: not found"
+        all_ok=false
+    fi
+
+    # curl
+    if command -v curl &> /dev/null; then
+        local curl_version=$(curl --version | head -1 | awk '{print $2}')
+        echo -e "${GREEN}✓${NC} curl: $curl_version"
+    else
+        echo -e "${RED}✗${NC} curl: not found"
+        all_ok=false
+    fi
+
+    # Bash
+    echo -e "${GREEN}✓${NC} Bash: $BASH_VERSION"
+
+    echo ""
+    if $all_ok; then
+        echo -e "${GREEN}All dependencies satisfied!${NC}"
+    else
+        echo -e "${RED}Some dependencies are missing. Please install them.${NC}"
+        exit 1
+    fi
+}
+
+# List installed pdm-* items
+cmd_list() {
+    echo ""
+    echo -e "${BLUE}Installed PDM items${NC}"
+    echo ""
+
+    echo -e "${CYAN}Skills:${NC} ($SKILLS_DIR)"
+    if [[ -d "$SKILLS_DIR" ]]; then
+        local skills=$(ls -1 "$SKILLS_DIR" 2>/dev/null | grep "^pdm-" || true)
+        if [[ -n "$skills" ]]; then
+            echo "$skills" | while read skill; do
+                echo "  • $skill"
+            done
+        else
+            echo "  (none)"
+        fi
+    else
+        echo "  (directory does not exist)"
+    fi
+
+    echo ""
+    echo -e "${CYAN}Commands:${NC} ($COMMANDS_DIR)"
+    if [[ -d "$COMMANDS_DIR" ]]; then
+        local commands=$(ls -1 "$COMMANDS_DIR" 2>/dev/null | grep "^pdm-" || true)
+        if [[ -n "$commands" ]]; then
+            echo "$commands" | while read cmd; do
+                echo "  • /${cmd%.md}"
+            done
+        else
+            echo "  (none)"
+        fi
+    else
+        echo "  (directory does not exist)"
+    fi
+    echo ""
+}
+
+# Install skills and/or commands
+cmd_install() {
+    local install_type="${1:-all}"  # skills, commands, or all
+
+    echo ""
+    echo -e "${BLUE}Installing PDM tools to $CLAUDE_DIR...${NC}"
+    echo ""
+
+    # Create directories
+    mkdir -p "$SKILLS_DIR" "$COMMANDS_DIR"
+
+    # Create temp directory for download
+    local tmp_dir=$(mktemp -d)
+    local archive_file="$tmp_dir/pdm-tools.tar.gz"
+    local extract_dir="$tmp_dir/extracted"
+
+    # Download archive
+    echo -e "${CYAN}Downloading from $PDM_REPO...${NC}"
+    if ! curl -sL "$ARCHIVE_URL" -o "$archive_file"; then
+        echo -e "${RED}Error: Failed to download from GitHub${NC}"
+        rm -rf "$tmp_dir"
+        exit 1
+    fi
+
+    # Extract archive
+    mkdir -p "$extract_dir"
+    tar -xzf "$archive_file" -C "$extract_dir"
+
+    # Find extracted directory (usually pdm-tools-main)
+    local src_dir=$(find "$extract_dir" -maxdepth 1 -type d -name "pdm-tools-*" | head -1)
+
+    if [[ -z "$src_dir" || ! -d "$src_dir" ]]; then
+        echo -e "${RED}Error: Could not find extracted content${NC}"
+        rm -rf "$tmp_dir"
+        exit 1
+    fi
+
+    # Install skills
+    if [[ "$install_type" == "all" || "$install_type" == "skills" ]]; then
+        if [[ -d "$src_dir/skills" ]]; then
+            echo ""
+            echo -e "${CYAN}Installing skills...${NC}"
+            for skill_dir in "$src_dir/skills"/pdm-*; do
+                if [[ -d "$skill_dir" ]]; then
+                    local skill_name=$(basename "$skill_dir")
+                    echo "  • $skill_name"
+                    rm -rf "$SKILLS_DIR/$skill_name"
+                    cp -r "$skill_dir" "$SKILLS_DIR/"
+                fi
+            done
+        else
+            echo -e "${YELLOW}No skills directory found in repository${NC}"
+        fi
+    fi
+
+    # Install commands
+    if [[ "$install_type" == "all" || "$install_type" == "commands" ]]; then
+        if [[ -d "$src_dir/commands" ]]; then
+            echo ""
+            echo -e "${CYAN}Installing commands...${NC}"
+            for cmd_file in "$src_dir/commands"/pdm-*.md; do
+                if [[ -f "$cmd_file" ]]; then
+                    local cmd_name=$(basename "$cmd_file")
+                    echo "  • /${cmd_name%.md}"
+                    cp "$cmd_file" "$COMMANDS_DIR/"
+                fi
+            done
+        else
+            echo -e "${YELLOW}No commands directory found in repository${NC}"
+        fi
+    fi
+
+    # Cleanup
+    rm -rf "$tmp_dir"
+
+    echo ""
+    echo -e "${GREEN}✓ Installation complete!${NC}"
+    echo ""
+    echo "Run 'pdm --list' to see installed items."
+    echo ""
+}
+
+# Update (force re-download)
+cmd_update() {
+    echo -e "${BLUE}Updating PDM tools...${NC}"
+    cmd_uninstall
+    cmd_install all
+}
+
+# Uninstall pdm-* items
+cmd_uninstall() {
+    echo ""
+    echo -e "${BLUE}Removing PDM skills and commands...${NC}"
+    echo ""
+
+    # Remove skills
+    if [[ -d "$SKILLS_DIR" ]]; then
+        local skills=$(ls -1 "$SKILLS_DIR" 2>/dev/null | grep "^pdm-" || true)
+        if [[ -n "$skills" ]]; then
+            echo -e "${CYAN}Removing skills:${NC}"
+            echo "$skills" | while read skill; do
+                echo "  • $skill"
+                rm -rf "$SKILLS_DIR/$skill"
+            done
+        fi
+    fi
+
+    # Remove commands
+    if [[ -d "$COMMANDS_DIR" ]]; then
+        local commands=$(ls -1 "$COMMANDS_DIR" 2>/dev/null | grep "^pdm-" || true)
+        if [[ -n "$commands" ]]; then
+            echo -e "${CYAN}Removing commands:${NC}"
+            echo "$commands" | while read cmd; do
+                echo "  • $cmd"
+                rm -f "$COMMANDS_DIR/$cmd"
+            done
+        fi
+    fi
+
+    echo ""
+    echo -e "${GREEN}✓ Uninstall complete!${NC}"
+    echo ""
+}
+
+# ============================================================================
+# FEATURE EXECUTION (Ralph Orchestrator)
+# ============================================================================
+
+# Find project root by looking for product-development/features directory
+find_project_root() {
+    local dir="$PWD"
+    while [[ "$dir" != "/" ]]; do
+        if [[ -d "$dir/product-development/features" ]]; then
+            echo "$dir"
+            return 0
+        fi
+        dir=$(dirname "$dir")
+    done
+    return 1
+}
+
+# Feature execution
+cmd_feature() {
+    local feature_id="$1"
+    local max_iterations="$2"
+
+    if [[ -z "$feature_id" ]]; then
+        echo -e "${RED}Error: Feature ID required${NC}"
+        echo "Usage: pdm --feature <feature-id> [--max-iterations <n>]"
+        exit 1
+    fi
+
+    # Find project root
+    local project_root
+    if ! project_root=$(find_project_root); then
+        echo -e "${RED}Error: Could not find project with product-development/features directory${NC}"
+        echo "Make sure you're running from within a project directory."
+        exit 1
+    fi
+
+    local features_dir="$project_root/product-development/features"
+    local feature_dir="$features_dir/$feature_id"
+    local prd_json="$feature_dir/prd.json"
+    local progress_file="$feature_dir/progress.txt"
+    local last_branch_file="$feature_dir/.last-branch"
+    local archive_dir="$feature_dir/archive"
+    local project_learnings="$project_root/LEARNINGS.md"
+
+    # Validate feature directory
+    if [[ ! -d "$feature_dir" ]]; then
+        echo -e "${RED}Error: Feature directory not found: $feature_dir${NC}"
+        exit 1
+    fi
+
+    # Validate prd.json
+    if [[ ! -f "$prd_json" ]]; then
+        echo -e "${RED}Error: prd.json not found: $prd_json${NC}"
+        echo -e "${YELLOW}Run /pdm-create-prd-json $feature_id first to generate prd.json${NC}"
+        exit 1
+    fi
+
+    # Check for required tools
+    if ! command -v claude &> /dev/null; then
+        echo -e "${RED}Error: Claude CLI not found${NC}"
+        exit 1
+    fi
+
+    # Initialize progress file if needed
+    if [[ ! -f "$progress_file" ]]; then
+        local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+        cat > "$progress_file" << EOF
+# Progress Log: $feature_id
+# Started: $timestamp
+
+## Codebase Patterns
+
+[Patterns and learnings discovered during implementation will be recorded here]
+
+---
+
+## Story Progress
+
+EOF
+        echo -e "${GREEN}✓ Initialized progress.txt${NC}"
+    fi
+
+    # Initialize LEARNINGS.md if needed
+    if [[ ! -f "$project_learnings" ]]; then
+        cat > "$project_learnings" << 'HEADER'
+# Project Learnings
+
+Accumulated codebase patterns and insights discovered during feature implementations.
+Each section represents learnings from a completed feature.
+
+---
+
+HEADER
+        echo -e "${GREEN}✓ Initialized LEARNINGS.md${NC}"
+    fi
+
+    # Archive previous run if branch changed
+    if [[ -f "$last_branch_file" && -f "$prd_json" ]]; then
+        local last_branch=$(cat "$last_branch_file")
+        local current_branch=$(json_get "$prd_json" ".branchName")
+
+        if [[ -n "$last_branch" && "$last_branch" != "$current_branch" ]]; then
+            if [[ -f "$progress_file" ]] && [[ $(wc -l < "$progress_file") -gt 10 ]]; then
+                local archive_name=$(date '+%Y-%m-%d')-$(echo "$last_branch" | sed 's/.*\///')
+                local archive_path="$archive_dir/$archive_name"
+
+                mkdir -p "$archive_path"
+                cp "$prd_json" "$archive_path/"
+                cp "$progress_file" "$archive_path/"
+
+                echo -e "${YELLOW}✓ Archived previous run to: $archive_path${NC}"
+
+                rm "$progress_file"
+                init_progress_file
+            fi
+        fi
+    fi
+
+    # Update last branch tracking
+    local branch=$(json_get "$prd_json" ".branchName")
+    if [[ -n "$branch" ]]; then
+        echo "$branch" > "$last_branch_file"
+    fi
+
+    # Count stories
+    local total_stories=$(json_array_length "$prd_json" ".userStories")
+    local incomplete_count=$(node -e "
+        const data = JSON.parse(require('fs').readFileSync('$prd_json', 'utf8'));
+        console.log(data.userStories.filter(s => !s.passes).length);
+    ")
+    local complete_count=$((total_stories - incomplete_count))
+
+    # Print status
+    echo ""
+    echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║  PDM Ralph Orchestrator - Feature: ${feature_id}${NC}"
+    echo -e "${CYAN}╠═══════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║  Stories: ${complete_count}/${total_stories} complete${NC}"
+    echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    # Check if already complete
+    if [[ "$incomplete_count" -eq 0 ]]; then
+        echo -e "${GREEN}✓ All stories already complete!${NC}"
+        exit 0
+    fi
+
+    echo -e "${BLUE}Starting iteration loop (max: $max_iterations)${NC}"
+    echo ""
+
+    local first_story_done=false
+
+    # Main loop
+    for i in $(seq 1 $max_iterations); do
+        # Get next incomplete story
+        local next_story=$(node -e "
+            const data = JSON.parse(require('fs').readFileSync('$prd_json', 'utf8'));
+            const incomplete = data.userStories.filter(s => !s.passes).sort((a,b) => a.priority - b.priority);
+            console.log(incomplete[0]?.id || '');
+        ")
+
+        if [[ -z "$next_story" ]]; then
+            echo -e "${GREEN}✓ All stories complete!${NC}"
+            exit 0
+        fi
+
+        # Get model for story
+        local story_model=$(node -e "
+            const data = JSON.parse(require('fs').readFileSync('$prd_json', 'utf8'));
+            const story = data.userStories.find(s => s.id === '$next_story');
+            console.log(story?.model || 'sonnet');
+        ")
+
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${CYAN}  Iteration $i/$max_iterations - Working on: $next_story (model: $story_model)${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+
+        # Determine if first story
+        local is_first="false"
+        if [[ "$first_story_done" == "false" ]]; then
+            is_first="true"
+            first_story_done=true
+        fi
+
+        # Build learnings instruction
+        local learnings_instruction=""
+        if [[ "$is_first" == "true" && -f "$project_learnings" ]]; then
+            learnings_instruction="
+IMPORTANT: This is the first story of this feature.
+Read the project learnings file first: $project_learnings
+Apply relevant patterns from previous features to this implementation.
+"
+        fi
+
+        # Build prompt
+        local prompt="You are executing the PDM Ralph autonomous agent loop for feature: $feature_id
+$learnings_instruction
+IMPORTANT: Read and follow these instructions exactly.
+
+## Your Task This Iteration
+
+1. Read the PRD file: $prd_json
+2. Read the progress file: $progress_file (check Codebase Patterns section first)
+3. Find the highest priority user story where \"passes\": false
+4. Checkout or create the branch specified in branchName
+5. Implement ONLY that one user story
+6. Run quality checks npm run build. Only run npm run lint if it is the LAST or ONLY story in the feature
+7. Follow acceptance criteria exactly - only verify in browser if the story's criteria includes \"Verify in browser\"
+8. If ALL checks pass:
+   - Commit with message: \"feat: [Story ID] - [Story Title]\"
+   - Update prd.json: set that story's \"passes\": true
+   - Append to progress.txt with what you learned
+9. If checks FAIL:
+   - Do NOT commit
+   - Fix the issues and retry
+   - If you cannot fix after 3 attempts, update the story's \"notes\" field with the blocker
+
+## Completion Signal
+
+After updating prd.json, check if ALL stories have \"passes\": true.
+If ALL stories pass, output this EXACT text on its own line:
+<promise>COMPLETE</promise>
+
+If stories remain incomplete, just finish this iteration normally.
+
+## Quality Gates
+
+- Typecheck must pass (npm run build)
+- Lint must pass (npm run lint)
+- UI stories must pass browser verification
+- NO commits if checks fail
+
+## File Locations
+
+- PRD: $prd_json
+- Progress: $progress_file
+- Feature directory: $feature_dir
+
+Begin now. Read the prd.json first to find the next story to implement."
+
+        # Run Claude with model selection
+        local output
+        output=$(echo "$prompt" | claude --dangerously-skip-permissions --model "$story_model" --print 2>&1) || true
+
+        # Check for completion signal
+        if echo "$output" | grep -q "<promise>COMPLETE</promise>"; then
+            # Append learnings to project-level file
+            local feature_name=$(json_get "$prd_json" ".featureName")
+            local timestamp=$(date '+%Y-%m-%d')
+
+            echo "" >> "$project_learnings"
+            echo "## $feature_name ($timestamp)" >> "$project_learnings"
+            echo "" >> "$project_learnings"
+
+            sed -n '/^## Codebase Patterns$/,/^---$/p' "$progress_file" | \
+                sed '1d;$d' >> "$project_learnings"
+
+            echo "---" >> "$project_learnings"
+
+            echo -e "${GREEN}✓ Appended learnings to LEARNINGS.md${NC}"
+
+            echo ""
+            echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════╗${NC}"
+            echo -e "${GREEN}║                    ALL STORIES COMPLETE!                      ║${NC}"
+            echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════╝${NC}"
+            echo ""
+
+            # Print final status
+            total_stories=$(json_array_length "$prd_json" ".userStories")
+            echo "Stories: $total_stories/$total_stories complete"
+            exit 0
+        fi
+
+        # Print iteration summary
+        incomplete_count=$(node -e "
+            const data = JSON.parse(require('fs').readFileSync('$prd_json', 'utf8'));
+            console.log(data.userStories.filter(s => !s.passes).length);
+        ")
+        complete_count=$((total_stories - incomplete_count))
+
+        echo ""
+        echo -e "${CYAN}║  Stories: ${complete_count}/${total_stories} complete${NC}"
+        echo ""
+
+        # Small delay between iterations
+        sleep 2
+    done
+
+    # Max iterations reached
+    echo ""
+    echo -e "${YELLOW}╔═══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${YELLOW}║  Max iterations ($max_iterations) reached. Some stories incomplete.${NC}"
+    echo -e "${YELLOW}╚═══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    echo -e "${YELLOW}Incomplete stories: $incomplete_count/$total_stories${NC}"
+    echo -e "${YELLOW}Check $progress_file for details.${NC}"
+
+    exit 1
+}
+
+# ============================================================================
+# MAIN
+# ============================================================================
+
+# Default values
+MAX_ITERATIONS=10
+FEATURE_ID=""
+COMMAND=""
+INSTALL_TYPE=""
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --install)
+            COMMAND="install"
+            if [[ -n "$2" && ! "$2" =~ ^-- ]]; then
+                INSTALL_TYPE="$2"
+                shift
+            fi
+            shift
+            ;;
+        --update)
+            COMMAND="update"
+            shift
+            ;;
+        --uninstall)
+            COMMAND="uninstall"
+            shift
+            ;;
+        --list)
+            COMMAND="list"
+            shift
+            ;;
+        --check)
+            COMMAND="check"
+            shift
+            ;;
+        --feature|-f)
+            COMMAND="feature"
+            FEATURE_ID="$2"
+            shift 2
+            ;;
+        --max-iterations)
+            MAX_ITERATIONS="$2"
+            shift 2
+            ;;
+        --version|-v)
+            echo "pdm version $VERSION"
+            exit 0
+            ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}Error: Unknown option $1${NC}"
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+# Execute command
+case $COMMAND in
+    install)
+        cmd_install "$INSTALL_TYPE"
+        ;;
+    update)
+        cmd_update
+        ;;
+    uninstall)
+        cmd_uninstall
+        ;;
+    list)
+        cmd_list
+        ;;
+    check)
+        cmd_check
+        ;;
+    feature)
+        cmd_feature "$FEATURE_ID" "$MAX_ITERATIONS"
+        ;;
+    "")
+        usage
+        exit 0
+        ;;
+    *)
+        echo -e "${RED}Error: Unknown command${NC}"
+        usage
+        exit 1
+        ;;
+esac

@@ -1,10 +1,10 @@
-# Project Dev Manager
+# PDM - Project Dev Manager
 
 An autonomous feature development framework powered by Claude Code. Transform feature ideas into working code through a structured workflow that generates documentation, validates requirements, and implements features automatically.
 
 ## Overview
 
-Project Dev Manager streamlines the software development process by guiding features through a complete lifecycle:
+PDM streamlines the software development process by guiding features through a complete lifecycle:
 
 ```
 Feature Idea → JTBD Analysis → PRD → prd.json → Generated Code
@@ -12,31 +12,142 @@ Feature Idea → JTBD Analysis → PRD → prd.json → Generated Code
 
 Each step builds on the previous, ensuring requirements are well-understood before implementation begins. The final step uses Claude to autonomously implement user stories, running quality checks and committing code as it progresses.
 
+## Quick Start
+
+### 1. Install PDM
+
+```bash
+# Download and install the pdm CLI tool
+curl -sL https://raw.githubusercontent.com/dlee-mindcurv/project-dev-manager/main/pdm -o ~/.local/bin/pdm
+chmod +x ~/.local/bin/pdm
+
+# Install skills and commands to ~/.claude/
+pdm --install
+
+# Verify installation
+pdm --list
+pdm --check
+```
+
+### 2. Use PDM commands in Claude Code
+
+```bash
+# In any project with product-development/features/ structure
+claude
+
+# Create documentation chain
+> /pdm-create-jtbd my-feature
+> /pdm-create-prd my-feature
+> /pdm-create-prd-json my-feature
+
+# Execute autonomous implementation
+> /pdm-ralph-execute my-feature
+```
+
+Or use the CLI directly:
+
+```bash
+pdm --feature my-feature
+```
+
 ## Prerequisites
 
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
 - Node.js 18+ (for Next.js projects)
 - Git
-- `jq` (for JSON processing)
+- curl (for installation)
+
+**Note:** `jq` is no longer required - PDM uses Node.js for JSON processing.
+
+## Installation
+
+### Option A: Global Installation (Recommended)
+
+```bash
+# Install pdm CLI
+curl -sL https://raw.githubusercontent.com/dlee-mindcurv/project-dev-manager/main/pdm -o ~/.local/bin/pdm
+chmod +x ~/.local/bin/pdm
+
+# Install PDM skills and commands
+pdm --install
+```
+
+### Option B: Symlink from Source
+
+```bash
+# Clone the repo
+git clone https://github.com/dlee-mindcurv/project-dev-manager.git
+cd project-dev-manager
+
+# Symlink pdm to your PATH
+ln -s $(pwd)/pdm ~/.local/bin/pdm
+
+# Install skills and commands
+pdm --install
+```
+
+## PDM CLI Commands
+
+### Installation Commands
+
+```bash
+pdm --install              # Install all skills and commands to ~/.claude/
+pdm --install skills       # Install only skills
+pdm --install commands     # Install only commands
+pdm --update               # Force re-download everything
+pdm --uninstall            # Remove all pdm-* skills and commands
+```
+
+### Info Commands
+
+```bash
+pdm --list                 # Show installed pdm-* items
+pdm --check                # Verify dependencies (Claude CLI, Node, Git, curl)
+```
+
+### Feature Execution
+
+```bash
+pdm --feature <id>         # Run PDM Ralph on a feature
+pdm -f <id> --max-iterations <n>  # With custom iteration limit
+```
+
+### Meta
+
+```bash
+pdm --version
+pdm --help
+```
+
+## Available Slash Commands
+
+After running `pdm --install`, these commands are available in Claude Code:
+
+| Command | Description |
+|---------|-------------|
+| `/pdm-create-jtbd <feature-id>` | Generate Jobs-to-be-Done analysis |
+| `/pdm-create-prd <feature-id>` | Generate Product Requirements Document |
+| `/pdm-create-prd-json <feature-id>` | Convert PRD to machine-readable JSON |
+| `/pdm-ralph-execute <feature-id>` | Run autonomous code generation |
+| `/pdm-code-review` | Comprehensive code quality review |
+| `/pdm-create-prp` | Create Product Requirement Prompt |
+
+## Installed Skills
+
+| Skill | Description |
+|-------|-------------|
+| `pdm-ralph` | PRD to prd.json converter |
+| `pdm-ralph-loop` | Iteration loop instructions |
+| `pdm-webapp-testing` | Browser verification with Playwright |
+| `pdm-code-reviewer` | Code review toolkit |
+| `pdm-react-best-practices` | React/Next.js optimization patterns |
 
 ## Project Structure
 
+For PDM to work in your project, create this structure:
+
 ```
-project-dev-manager/
-├── .claude/
-│   ├── commands/           # Slash commands for Claude Code
-│   │   ├── create-jtbd.md      # /create-jtbd - Jobs-to-be-Done analysis
-│   │   ├── create-prd.md       # /create-prd - Product Requirements Document
-│   │   ├── create-prd-json.md  # /create-prd-json - Convert PRD to JSON
-│   │   └── ralph-execute.md    # /ralph-execute - Run autonomous execution
-│   └── skills/             # Claude Code skills
-│       ├── ralph/              # PRD conversion skill
-│       ├── ralph-loop/         # Iteration loop instructions
-│       ├── webapp-testing/     # Browser verification
-│       └── ...
-├── scripts/
-│   ├── acquire-feature.sh      # Interactive feature intake
-│   └── generate-feature-code.sh # Autonomous code generation
+your-project/
 ├── product-development/
 │   ├── resources/          # Templates and product docs
 │   │   ├── product.md          # Product overview
@@ -74,61 +185,28 @@ Brief description of what you want to build.
 EOF
 ```
 
-Or use the interactive script:
+### 2. Generate Documentation
+
+In Claude Code:
+
+```
+/pdm-create-jtbd my-feature    # Creates JTBD analysis
+/pdm-create-prd my-feature     # Creates PRD (auto-chained from JTBD)
+/pdm-create-prd-json my-feature # Converts PRD to executable JSON
+```
+
+### 3. Execute Autonomous Generation
+
+In Claude Code:
+
+```
+/pdm-ralph-execute my-feature
+```
+
+Or via CLI:
 
 ```bash
-./scripts/acquire-feature.sh
-```
-
-### 2. Generate JTBD Analysis
-
-In Claude Code, run:
-
-```
-/create-jtbd my-feature
-```
-
-This creates a Jobs-to-be-Done analysis that captures:
-- User motivations and pain points
-- Desired outcomes
-- Competitive analysis
-- Success criteria
-
-### 3. Generate PRD
-
-The JTBD command automatically chains to:
-
-```
-/create-prd my-feature
-```
-
-This produces a Product Requirements Document with:
-- User stories with acceptance criteria
-- Functional requirements
-- Non-goals and scope boundaries
-- Technical considerations
-
-### 4. Convert to prd.json
-
-```
-/create-prd-json my-feature
-```
-
-Converts the PRD into a machine-readable format that the code generator uses. Stories are:
-- Consolidated for efficiency (small features become 1-2 stories)
-- Ordered by dependency
-- Assigned appropriate AI models (haiku/sonnet/opus)
-
-### 5. Generate Code
-
-```
-/ralph-execute my-feature
-```
-
-Or via script:
-
-```bash
-./scripts/generate-feature-code.sh --feature my-feature
+pdm --feature my-feature
 ```
 
 The generator:
@@ -138,40 +216,6 @@ The generator:
 4. Commits on success
 5. Updates prd.json status
 6. Loops until all stories pass
-
-## Available Commands
-
-| Command | Description |
-|---------|-------------|
-| `/create-jtbd <feature-id>` | Generate Jobs-to-be-Done analysis |
-| `/create-prd <feature-id>` | Generate Product Requirements Document |
-| `/create-prd-json <feature-id>` | Convert PRD to machine-readable JSON |
-| `/ralph-execute <feature-id>` | Run autonomous code generation |
-
-## Scripts
-
-### acquire-feature.sh
-
-Interactive feature intake that:
-- Prompts for feature name and description
-- Creates feature directory structure
-- Updates feature status tracking
-
-```bash
-./scripts/acquire-feature.sh
-```
-
-### generate-feature-code.sh
-
-Autonomous code generation orchestrator:
-
-```bash
-./scripts/generate-feature-code.sh --feature <feature-id> [--max-iterations <n>]
-```
-
-Options:
-- `--feature, -f` - Feature ID (required)
-- `--max-iterations` - Maximum iterations before stopping (default: 10)
 
 ## Configuration
 
@@ -192,10 +236,6 @@ Each iteration runs these checks before committing:
 - Linting (`npm run lint`) - final story only
 - Browser verification (UI stories) - final story only
 
-## Project Learnings
-
-The framework accumulates learnings across features in `LEARNINGS.md`. When starting a new feature, the generator reads previous patterns to apply consistent solutions.
-
 ## Example Session
 
 ```bash
@@ -204,18 +244,18 @@ mkdir -p product-development/features/dark-mode
 echo "# Feature: Dark Mode Toggle" > product-development/features/dark-mode/feature.md
 
 # 2. In Claude Code, generate documentation
-> /create-jtbd dark-mode
+> /pdm-create-jtbd dark-mode
 # Creates jtbd.md, then chains to...
-# /create-prd dark-mode
+# /pdm-create-prd dark-mode
 # Creates prd.md
 
 # 3. Convert to executable format
-> /create-prd-json dark-mode
+> /pdm-create-prd-json dark-mode
 # Creates prd.json with consolidated stories
 
 # 4. Generate the code
-> /ralph-execute dark-mode
-# Implements feature, commits, updates status
+> /pdm-ralph-execute dark-mode
+# Or: pdm --feature dark-mode
 
 # Output:
 # ╔═══════════════════════════════════════════════════════════════╗
@@ -229,7 +269,7 @@ echo "# Feature: Dark Mode Toggle" > product-development/features/dark-mode/feat
 
 ### "prd.json not found"
 
-Run `/create-prd-json <feature-id>` to generate it from the PRD.
+Run `/pdm-create-prd-json <feature-id>` to generate it from the PRD.
 
 ### "Max iterations reached"
 
@@ -242,6 +282,26 @@ Run `/create-prd-json <feature-id>` to generate it from the PRD.
 - Check the iteration output for specific errors
 - Fix issues in the codebase
 - Re-run to continue from where it left off
+
+### Skills/commands not available
+
+```bash
+# Re-install PDM tools
+pdm --update
+
+# Verify installation
+pdm --list
+```
+
+## Uninstalling
+
+```bash
+# Remove PDM skills and commands
+pdm --uninstall
+
+# Remove the CLI
+rm ~/.local/bin/pdm
+```
 
 ## Inspiration
 
