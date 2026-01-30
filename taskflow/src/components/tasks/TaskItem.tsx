@@ -45,7 +45,7 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
 
           {task.description && (
             <p
-              className={`mt-1 text-sm text-gray-600 dark:text-gray-400 ${
+              className={`mt-1 text-sm text-gray-600 dark:text-gray-300 ${
                 isExpanded ? '' : 'line-clamp-2'
               }`}
               onClick={() => setIsExpanded(!isExpanded)}
@@ -65,7 +65,7 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
                 {task.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded"
+                    className="bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded"
                   >
                     {tag}
                   </span>

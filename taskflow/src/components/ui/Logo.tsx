@@ -16,7 +16,7 @@ export function Logo({ size = 'md', variant = 'full', className = '' }: LogoProp
   return (
     <div className={`flex items-center gap-2 ${className}`}>
       <div
-        className={`${iconSize} bg-blue-600 rounded-lg flex items-center justify-center`}
+        className={`${iconSize} bg-blue-600 dark:bg-blue-500 rounded-lg flex items-center justify-center`}
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"

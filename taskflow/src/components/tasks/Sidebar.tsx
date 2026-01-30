@@ -44,7 +44,7 @@ export function Sidebar() {
           }`}
         >
           <span>All Tasks</span>
-          <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-full">
+          <span className="text-xs bg-gray-200 dark:bg-gray-600 dark:text-gray-200 px-2 py-0.5 rounded-full">
             {getTaskCount(null)}
           </span>
         </button>
@@ -68,7 +68,7 @@ export function Sidebar() {
                 )}
                 {list.name}
               </span>
-              <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-full">
+              <span className="text-xs bg-gray-200 dark:bg-gray-600 dark:text-gray-200 px-2 py-0.5 rounded-full">
                 {getTaskCount(list.id)}
               </span>
             </button>

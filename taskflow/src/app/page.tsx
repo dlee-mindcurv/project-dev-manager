@@ -8,7 +8,7 @@ export default function Home() {
     <div className="min-h-screen flex">
       <Sidebar />
 
-      <main className="flex-1 p-6 md:p-8">
+      <main className="flex-1 p-6 md:p-8 bg-gray-100 dark:bg-gray-900">
         <div className="max-w-3xl mx-auto">
           <header className="mb-8">
             <div className="md:hidden mb-4">
