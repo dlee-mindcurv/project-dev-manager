@@ -1,12 +1,6 @@
 'use client';
 
-import {
-  createContext,
-  useContext,
-  useCallback,
-  useSyncExternalStore,
-  ReactNode,
-} from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
 type Theme = 'light' | 'dark';
 
@@ -17,50 +11,41 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-const STORAGE_KEY = 'taskflow-theme';
-
-// Theme store for useSyncExternalStore
-let listeners: (() => void)[] = [];
-
-function getSnapshot(): Theme {
-  if (typeof window === 'undefined') return 'light';
-  const stored = localStorage.getItem(STORAGE_KEY);
-  return stored === 'dark' ? 'dark' : 'light';
-}
-
-function getServerSnapshot(): Theme {
-  return 'light';
-}
-
-function subscribe(listener: () => void) {
-  listeners = [...listeners, listener];
-  return () => {
-    listeners = listeners.filter((l) => l !== listener);
-  };
-}
-
-function setTheme(theme: Theme) {
-  localStorage.setItem(STORAGE_KEY, theme);
-
-  // Update DOM
-  const root = document.documentElement;
-  if (theme === 'dark') {
-    root.classList.add('dark');
-  } else {
-    root.classList.remove('dark');
-  }
-
-  // Notify listeners
-  listeners.forEach((listener) => listener());
-}
+const THEME_STORAGE_KEY = 'taskflow-theme';
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const theme = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const [theme, setTheme] = useState<Theme>('light');
+  const [mounted, setMounted] = useState(false);
 
-  const toggleTheme = useCallback(() => {
-    const newTheme = getSnapshot() === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
+  // Load theme from localStorage on mount
+  useEffect(() => {
+    const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as Theme | null;
+    if (storedTheme === 'dark' || storedTheme === 'light') {
+      setTheme(storedTheme);
+    }
+    setMounted(true);
   }, []);
+
+  // Apply theme class to document root
+  useEffect(() => {
+    if (mounted) {
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    }
+  }, [theme, mounted]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  };
+
+  // Prevent flash of unstyled content
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>

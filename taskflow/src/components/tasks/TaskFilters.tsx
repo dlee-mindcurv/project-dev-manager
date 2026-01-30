@@ -1,7 +1,7 @@
 'use client';
 
 import { useTaskContext } from '@/context/TaskContext';
-import { Input, Select } from '@/components/ui';
+import { Input, Select, Button } from '@/components/ui';
 import { TaskFilter, TaskSort } from '@/types';
 
 export function TaskFilters() {

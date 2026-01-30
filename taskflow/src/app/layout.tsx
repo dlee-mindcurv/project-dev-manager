@@ -26,23 +26,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                const theme = localStorage.getItem('taskflow-theme');
-                if (theme === 'dark') {
-                  document.documentElement.classList.add('dark');
-                }
-              })();
-            `,
-          }}
-        />
-      </head>
+    <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-100 dark:bg-gray-900`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-100 dark:bg-gray-950`}
       >
         <ThemeProvider>
           <TaskProvider>{children}</TaskProvider>
