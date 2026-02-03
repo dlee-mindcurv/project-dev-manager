@@ -1060,6 +1060,8 @@ Begin now. Read the prd.json first to find the next story to implement."
 # MAIN
 # ============================================================================
 
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+
 # Default values
 MAX_ITERATIONS=10
 FEATURE_ID=""
@@ -1160,3 +1162,5 @@ case $COMMAND in
         exit 1
         ;;
 esac
+
+fi # end BASH_SOURCE guard
