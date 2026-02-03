@@ -40,8 +40,8 @@ usage() {
     echo "  --check              Verify dependencies (Claude CLI, Node, Git, curl)"
     echo ""
     echo -e "${CYAN}Feature Lifecycle:${NC}"
-    echo "  --create-feature [name]    Create a new feature (interactive if no name given)"
-    echo "  --feature, -f <id>    Run Ralph on feature"
+    echo "  --draft-feature [name]     Create a new feature (interactive if no name given)"
+    echo "  --build-feature, -f <id>   Run Ralph on feature"
     echo "  --max-iterations <n>  Max iterations for feature execution (default: 10)"
     echo ""
     echo -e "${CYAN}Meta:${NC}"
@@ -52,8 +52,8 @@ usage() {
     echo "  pdm --install              # Install all skills and commands"
     echo "  pdm --install skills       # Install only skills"
     echo "  pdm --list                 # Show installed items"
-    echo "  pdm --create-feature               # Interactive feature creation"
-    echo "  pdm --create-feature \"Dark Mode\"   # Create feature with name directly"
+    echo "  pdm --draft-feature                # Interactive feature creation"
+    echo "  pdm --draft-feature \"Dark Mode\"    # Create feature with name directly"
     echo "  pdm -f my-feature          # Execute Ralph on 'my-feature' feature"
     echo "  pdm -f my-feature --max-iterations 20"
     echo ""
@@ -539,7 +539,7 @@ cmd_uninstall() {
 # ============================================================================
 
 # Create a new feature (interactive or direct)
-cmd_create_feature() {
+cmd_draft_feature() {
     local feature_name="$1"
 
     echo ""
@@ -767,14 +767,14 @@ find_project_root() {
 }
 
 # Feature execution
-cmd_feature() {
+cmd_build_feature() {
     local feature_id="$1"
     local max_iterations="$2"
     local start_time=$SECONDS
 
     if [[ -z "$feature_id" ]]; then
         echo -e "${RED}Error: Feature ID required${NC}"
-        echo "Usage: pdm --feature <feature-id> [--max-iterations <n>]"
+        echo "Usage: pdm --build-feature <feature-id> [--max-iterations <n>]"
         exit 1
     fi
 
@@ -1096,16 +1096,16 @@ while [[ $# -gt 0 ]]; do
             COMMAND="check"
             shift
             ;;
-        --create-feature)
-            COMMAND="create-feature"
+        --draft-feature)
+            COMMAND="draft-feature"
             if [[ -n "$2" && ! "$2" =~ ^-- ]]; then
                 FEATURE_NAME="$2"
                 shift
             fi
             shift
             ;;
-        --feature|-f)
-            COMMAND="feature"
+        --build-feature|-f)
+            COMMAND="build-feature"
             FEATURE_ID="$2"
             shift 2
             ;;
@@ -1146,11 +1146,11 @@ case $COMMAND in
     check)
         cmd_check
         ;;
-    create-feature)
-        cmd_create_feature "$FEATURE_NAME"
+    draft-feature)
+        cmd_draft_feature "$FEATURE_NAME"
         ;;
-    feature)
-        cmd_feature "$FEATURE_ID" "$MAX_ITERATIONS"
+    build-feature)
+        cmd_build_feature "$FEATURE_ID" "$MAX_ITERATIONS"
         ;;
     "")
         usage

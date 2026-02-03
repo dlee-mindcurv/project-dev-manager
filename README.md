@@ -47,7 +47,7 @@ claude
 Or use the CLI directly:
 
 ```bash
-pdm --feature my-feature
+pdm --build-feature my-feature
 ```
 
 ## Prerequisites
@@ -108,7 +108,7 @@ pdm --check                # Verify dependencies (Claude CLI, Node, Git, curl)
 ### Feature Execution
 
 ```bash
-pdm --feature <id>         # Run PDM Ralph on a feature
+pdm --build-feature <id>   # Run PDM Ralph on a feature
 pdm -f <id> --max-iterations <n>  # With custom iteration limit
 ```
 
@@ -206,7 +206,7 @@ In Claude Code:
 Or via CLI:
 
 ```bash
-pdm --feature my-feature
+pdm --build-feature my-feature
 ```
 
 The generator:
@@ -255,7 +255,7 @@ echo "# Feature: Dark Mode Toggle" > product-development/features/dark-mode/feat
 
 # 4. Generate the code
 > /pdm-ralph-execute dark-mode
-# Or: pdm --feature dark-mode
+# Or: pdm --build-feature dark-mode
 
 # Output:
 # ╔═══════════════════════════════════════════════════════════════╗
