@@ -39,9 +39,10 @@ usage() {
     echo "  --list               Show installed pdm-* items"
     echo "  --check              Verify dependencies (Claude CLI, Node, Git, curl)"
     echo ""
-    echo -e "${CYAN}Feature Execution:${NC}"
-    echo "  --feature, -f <id>   Run Ralph on feature"
-    echo "  --max-iterations <n> Max iterations for feature execution (default: 10)"
+    echo -e "${CYAN}Feature Lifecycle:${NC}"
+    echo "  --create-feature [name]    Create a new feature (interactive if no name given)"
+    echo "  --feature, -f <id>    Run Ralph on feature"
+    echo "  --max-iterations <n>  Max iterations for feature execution (default: 10)"
     echo ""
     echo -e "${CYAN}Meta:${NC}"
     echo "  --version, -v        Show version"
@@ -51,7 +52,9 @@ usage() {
     echo "  pdm --install              # Install all skills and commands"
     echo "  pdm --install skills       # Install only skills"
     echo "  pdm --list                 # Show installed items"
-    echo "  pdm -f my-feature           # Execute Ralph on 'my-feature' feature"
+    echo "  pdm --create-feature               # Interactive feature creation"
+    echo "  pdm --create-feature \"Dark Mode\"   # Create feature with name directly"
+    echo "  pdm -f my-feature          # Execute Ralph on 'my-feature' feature"
     echo "  pdm -f my-feature --max-iterations 20"
     echo ""
 }
@@ -77,6 +80,42 @@ json_array_item() {
     node -e "console.log(JSON.parse(require('fs').readFileSync('$file','utf8'))$path[$index].$prop || '')" 2>/dev/null
 }
 
+# Generate feature ID from name (e.g., "My Feature" -> "my-feature")
+generate_feature_id() {
+    local name="$1"
+    echo "$name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd '[:alnum:]-'
+}
+
+# Update status.json with a new feature entry (uses Node.js, no jq dependency)
+update_status_json() {
+    local status_file="$1"
+    local id="$2"
+    local name="$3"
+    local status="${4:-OPEN}"
+    local timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+    # Create status.json if it doesn't exist
+    if [[ ! -f "$status_file" ]]; then
+        echo '{ "features": [] }' > "$status_file"
+    fi
+
+    node -e "
+        const fs = require('fs');
+        const file = process.argv[1];
+        const id = process.argv[2];
+        const name = process.argv[3];
+        const status = process.argv[4];
+        const ts = process.argv[5];
+        const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+        if (data.features.some(f => f.id === id)) {
+            console.log('Feature ' + id + ' already exists in status.json');
+            process.exit(0);
+        }
+        data.features.push({ id, name, status, createdAt: ts, updatedAt: ts });
+        fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
+    " "$status_file" "$id" "$name" "$status" "$timestamp"
+}
+
 format_elapsed() {
     local total_seconds="$1"
     local hours=$((total_seconds / 3600))
@@ -89,6 +128,186 @@ format_elapsed() {
     else
         printf "%ds" "$seconds"
     fi
+}
+
+# Create JTBD template if it doesn't exist
+setup_jtbd_template() {
+    local resources_dir="$1"
+    local template_file="$resources_dir/JTBD-template.md"
+
+    mkdir -p "$resources_dir"
+
+    if [[ -f "$template_file" ]]; then
+        return 0
+    fi
+
+    cat > "$template_file" << 'JTBD_EOF'
+# Jobs-to-be-Done Analysis: [FEATURE_NAME]
+
+## Feature Summary
+
+[Brief description of the feature]
+
+---
+
+## Job Statements
+
+### Primary Job
+
+**When** [situation], **I want** [motivation], **so I can** [expected outcome].
+
+### Secondary Jobs
+
+1. **When** [situation], **I want** [motivation], **so I can** [expected outcome].
+
+---
+
+## User Needs and Pain Points
+
+### Needs
+
+| Need | Description |
+|------|-------------|
+| [Need] | [Description] |
+
+### Pain Points Addressed
+
+| Pain Point | How This Feature Helps |
+|------------|----------------------|
+| [Pain Point] | [How it helps] |
+
+---
+
+## Desired Outcomes (User Perspective)
+
+### Functional Outcomes
+
+- [Outcome]
+
+### Emotional Outcomes
+
+- [Outcome]
+
+### Social Outcomes
+
+- [Outcome]
+
+---
+
+## Competitive Analysis (JTBD Lens)
+
+| Competitor | How They Solve This Job |
+|------------|------------------------|
+| [Competitor] | [Their approach] |
+
+### Competitive Insight
+
+[Analysis of competitive landscape]
+
+---
+
+## Market Opportunity Assessment
+
+### Brand Differentiation
+
+- [Differentiation point]
+
+### User Expectations
+
+[What users expect]
+
+### Strategic Value
+
+| Factor | Impact |
+|--------|--------|
+| [Factor] | [Impact] |
+
+---
+
+## Success Criteria (From User Perspective)
+
+- [Success criterion]
+
+---
+
+## Assumptions to Validate
+
+1. [Assumption to validate]
+JTBD_EOF
+    echo -e "${GREEN}✓ Created JTBD template: $template_file${NC}"
+}
+
+# Create PRD template if it doesn't exist
+setup_prd_template() {
+    local resources_dir="$1"
+    local template_file="$resources_dir/PRD-template.md"
+
+    mkdir -p "$resources_dir"
+
+    if [[ -f "$template_file" ]]; then
+        return 0
+    fi
+
+    cat > "$template_file" << 'PRD_EOF'
+# PRD: [FEATURE_NAME]
+
+## Introduction
+
+[Brief description of the feature and the problem it solves.]
+
+## Goals
+
+- [Specific, measurable objective]
+- [Another objective]
+
+## User Stories
+
+### US-001: [Title]
+**Description:** As a [user], I want [feature] so that [benefit].
+
+**Acceptance Criteria:**
+- [ ] Specific verifiable criterion
+- [ ] Another criterion
+- [ ] Typecheck/lint passes
+
+### US-002: [Title]
+**Description:** As a [user], I want [feature] so that [benefit].
+
+**Acceptance Criteria:**
+- [ ] Specific verifiable criterion
+- [ ] Typecheck/lint passes
+- [ ] Verify in browser using dev-browser skill
+
+## Functional Requirements
+
+- FR-1: The system must [specific functionality]
+- FR-2: When a user [action], the system must [response]
+
+## Non-Goals
+
+- [What this feature will NOT include]
+- [Another exclusion]
+
+## Design Considerations
+
+- [UI/UX requirements]
+- [Relevant existing components to reuse]
+
+## Technical Considerations
+
+- [Known constraints or dependencies]
+- [Integration points with existing systems]
+
+## Success Metrics
+
+- [How success will be measured]
+- [Another metric]
+
+## Open Questions
+
+- [Remaining questions or areas needing clarification]
+PRD_EOF
+    echo -e "${GREEN}✓ Created PRD template: $template_file${NC}"
 }
 
 # Check dependencies
@@ -313,6 +532,221 @@ cmd_uninstall() {
     echo ""
     echo -e "${GREEN}✓ Uninstall complete!${NC}"
     echo ""
+}
+
+# ============================================================================
+# FEATURE CREATION
+# ============================================================================
+
+# Create a new feature (interactive or direct)
+cmd_create_feature() {
+    local feature_name="$1"
+
+    echo ""
+    echo -e "${BLUE}╔═══════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║     Feature Creation                  ║${NC}"
+    echo -e "${BLUE}╚═══════════════════════════════════════╝${NC}"
+    echo ""
+
+    # Find project root (or use current directory)
+    local project_root
+    if project_root=$(find_project_root); then
+        echo -e "${GREEN}✓ Found project root: $project_root${NC}"
+    else
+        project_root="$PWD"
+        echo -e "${YELLOW}No existing product-development directory found.${NC}"
+        echo -e "${YELLOW}Using current directory: $project_root${NC}"
+    fi
+
+    local features_dir="$project_root/product-development/features"
+    local resources_dir="$project_root/product-development/resources"
+    local status_json="$features_dir/status.json"
+    local product_md="$project_root/product.md"
+
+    # Create directories
+    mkdir -p "$features_dir" "$resources_dir"
+
+    # Copy product.md to resources if it exists
+    if [[ -f "$product_md" ]]; then
+        cp "$product_md" "$resources_dir/product.md"
+        echo -e "${GREEN}✓ Copied product.md to resources directory${NC}"
+    fi
+
+    # Setup templates
+    setup_jtbd_template "$resources_dir"
+    setup_prd_template "$resources_dir"
+
+    # Check for Claude CLI
+    if ! command -v claude &> /dev/null; then
+        echo -e "${RED}Error: Claude CLI not found.${NC}"
+        echo -e "Please install Claude Code and try again."
+        exit 1
+    fi
+
+    # Ensure PDM skills are installed
+    local command_file="$HOME/.claude/commands/pdm-create-jtbd.md"
+    if [[ -f "$command_file" ]]; then
+        echo -e "${GREEN}✓ PDM skills already installed${NC}"
+    else
+        echo -e "${YELLOW}PDM skills not found. Installing via pdm --install...${NC}"
+        cmd_install
+    fi
+
+    echo ""
+
+    # Feature ID will be set during input collection
+    local feature_id=""
+
+    if [[ -n "$feature_name" ]]; then
+        # Direct mode: name provided via flag
+        feature_id=$(generate_feature_id "$feature_name")
+        echo -e "${BLUE}Feature name: $feature_name${NC}"
+        echo -e "${BLUE}Generated feature ID: $feature_id${NC}"
+
+        echo ""
+        echo "Feature description (press Enter twice when done):"
+        echo ""
+
+        local feature_description=""
+        while IFS= read -r line; do
+            [[ -z "$line" ]] && break
+            feature_description+="$line"$'\n'
+        done
+        feature_description="${feature_description%$'\n'}"
+
+        if [[ -z "$feature_description" ]]; then
+            echo -e "${RED}Error: Feature description cannot be empty${NC}"
+            exit 1
+        fi
+
+        # Create feature directory and file
+        local feature_dir="$features_dir/$feature_id"
+        mkdir -p "$feature_dir"
+        local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+        cat > "$feature_dir/feature.md" << FEAT_EOF
+# Feature: $feature_name
+
+## Description
+
+$feature_description
+
+## Status
+
+- Created: $timestamp
+- Status: Draft
+FEAT_EOF
+
+        echo -e "${GREEN}✓ Created feature file: $feature_dir/feature.md${NC}"
+        update_status_json "$status_json" "$feature_id" "$feature_name" "OPEN"
+        echo -e "${GREEN}✓ Updated status.json with feature: $feature_id${NC}"
+
+    else
+        # Interactive mode: show menu
+        echo -e "${YELLOW}Create a new feature:${NC}"
+        echo ""
+        echo -e "${BLUE}How would you like to provide the feature details?${NC}"
+        echo ""
+        echo "  1) Enter feature name and description manually"
+        echo "  2) Reference an existing feature file"
+        echo "  3) Cancel"
+        echo ""
+        read -p "Select an option [1-3]: " choice
+
+        case $choice in
+            1)
+                echo ""
+                echo -e "${BLUE}Enter feature details:${NC}"
+                echo ""
+
+                read -p "Feature name: " feature_name
+                if [[ -z "$feature_name" ]]; then
+                    echo -e "${RED}Error: Feature name cannot be empty${NC}"
+                    exit 1
+                fi
+
+                feature_id=$(generate_feature_id "$feature_name")
+                echo -e "${BLUE}Generated feature ID: $feature_id${NC}"
+
+                echo ""
+                echo "Feature description (press Enter twice when done):"
+                echo ""
+
+                local feature_description=""
+                while IFS= read -r line; do
+                    [[ -z "$line" ]] && break
+                    feature_description+="$line"$'\n'
+                done
+                feature_description="${feature_description%$'\n'}"
+
+                if [[ -z "$feature_description" ]]; then
+                    echo -e "${RED}Error: Feature description cannot be empty${NC}"
+                    exit 1
+                fi
+
+                # Create feature directory and file
+                local feature_dir="$features_dir/$feature_id"
+                mkdir -p "$feature_dir"
+                local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+                cat > "$feature_dir/feature.md" << FEAT_EOF
+# Feature: $feature_name
+
+## Description
+
+$feature_description
+
+## Status
+
+- Created: $timestamp
+- Status: Draft
+FEAT_EOF
+
+                echo ""
+                echo -e "${GREEN}✓ Created feature file: $feature_dir/feature.md${NC}"
+                update_status_json "$status_json" "$feature_id" "$feature_name" "OPEN"
+                echo -e "${GREEN}✓ Updated status.json with feature: $feature_id${NC}"
+                ;;
+            2)
+                echo ""
+                read -p "Enter the path to the existing feature file: " file_path
+                file_path="${file_path/#\~/$HOME}"
+
+                if [[ ! -f "$file_path" ]]; then
+                    echo -e "${RED}Error: File not found: $file_path${NC}"
+                    exit 1
+                fi
+
+                echo ""
+                read -p "Enter a name for this feature (used to generate ID): " feature_name
+                if [[ -z "$feature_name" ]]; then
+                    echo -e "${RED}Error: Feature name cannot be empty${NC}"
+                    exit 1
+                fi
+
+                feature_id=$(generate_feature_id "$feature_name")
+                local feature_dir="$features_dir/$feature_id"
+                mkdir -p "$feature_dir"
+                cp "$file_path" "$feature_dir/feature.md"
+                echo -e "${GREEN}✓ Copied feature file to: $feature_dir/feature.md${NC}"
+                update_status_json "$status_json" "$feature_id" "$feature_name" "OPEN"
+                echo -e "${GREEN}✓ Updated status.json with feature: $feature_id${NC}"
+                ;;
+            3)
+                echo -e "${YELLOW}Cancelled.${NC}"
+                exit 0
+                ;;
+            *)
+                echo -e "${RED}Invalid option. Exiting.${NC}"
+                exit 1
+                ;;
+        esac
+    fi
+
+    echo ""
+    echo -e "${BLUE}Launching Claude Code with /pdm-create-jtbd ${feature_id}...${NC}"
+    echo ""
+
+    cd "$project_root"
+    claude "/pdm-create-jtbd ${feature_id}"
 }
 
 # ============================================================================
@@ -629,6 +1063,7 @@ Begin now. Read the prd.json first to find the next story to implement."
 # Default values
 MAX_ITERATIONS=10
 FEATURE_ID=""
+FEATURE_NAME=""
 COMMAND=""
 INSTALL_TYPE=""
 
@@ -657,6 +1092,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --check)
             COMMAND="check"
+            shift
+            ;;
+        --create-feature)
+            COMMAND="create-feature"
+            if [[ -n "$2" && ! "$2" =~ ^-- ]]; then
+                FEATURE_NAME="$2"
+                shift
+            fi
             shift
             ;;
         --feature|-f)
@@ -700,6 +1143,9 @@ case $COMMAND in
         ;;
     check)
         cmd_check
+        ;;
+    create-feature)
+        cmd_create_feature "$FEATURE_NAME"
         ;;
     feature)
         cmd_feature "$FEATURE_ID" "$MAX_ITERATIONS"
