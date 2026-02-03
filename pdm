@@ -40,7 +40,7 @@ usage() {
     echo "  --check              Verify dependencies (Claude CLI, Node, Git, curl)"
     echo ""
     echo -e "${CYAN}Feature Lifecycle:${NC}"
-    echo "  --acquire, -a [name]  Create a new feature (interactive if no name given)"
+    echo "  --create-feature [name]    Create a new feature (interactive if no name given)"
     echo "  --feature, -f <id>    Run Ralph on feature"
     echo "  --max-iterations <n>  Max iterations for feature execution (default: 10)"
     echo ""
@@ -52,8 +52,8 @@ usage() {
     echo "  pdm --install              # Install all skills and commands"
     echo "  pdm --install skills       # Install only skills"
     echo "  pdm --list                 # Show installed items"
-    echo "  pdm --acquire              # Interactive feature creation"
-    echo "  pdm -a \"Dark Mode\"         # Create feature with name directly"
+    echo "  pdm --create-feature               # Interactive feature creation"
+    echo "  pdm --create-feature \"Dark Mode\"   # Create feature with name directly"
     echo "  pdm -f my-feature          # Execute Ralph on 'my-feature' feature"
     echo "  pdm -f my-feature --max-iterations 20"
     echo ""
@@ -535,16 +535,16 @@ cmd_uninstall() {
 }
 
 # ============================================================================
-# FEATURE ACQUISITION
+# FEATURE CREATION
 # ============================================================================
 
-# Acquire a new feature (interactive or direct)
-cmd_acquire() {
+# Create a new feature (interactive or direct)
+cmd_create_feature() {
     local feature_name="$1"
 
     echo ""
     echo -e "${BLUE}╔═══════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║     Feature Acquisition               ║${NC}"
+    echo -e "${BLUE}║     Feature Creation                  ║${NC}"
     echo -e "${BLUE}╚═══════════════════════════════════════╝${NC}"
     echo ""
 
@@ -1094,8 +1094,8 @@ while [[ $# -gt 0 ]]; do
             COMMAND="check"
             shift
             ;;
-        --acquire|-a)
-            COMMAND="acquire"
+        --create-feature)
+            COMMAND="create-feature"
             if [[ -n "$2" && ! "$2" =~ ^-- ]]; then
                 FEATURE_NAME="$2"
                 shift
@@ -1144,8 +1144,8 @@ case $COMMAND in
     check)
         cmd_check
         ;;
-    acquire)
-        cmd_acquire "$FEATURE_NAME"
+    create-feature)
+        cmd_create_feature "$FEATURE_NAME"
         ;;
     feature)
         cmd_feature "$FEATURE_ID" "$MAX_ITERATIONS"
