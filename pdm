@@ -77,6 +77,20 @@ json_array_item() {
     node -e "console.log(JSON.parse(require('fs').readFileSync('$file','utf8'))$path[$index].$prop || '')" 2>/dev/null
 }
 
+format_elapsed() {
+    local total_seconds="$1"
+    local hours=$((total_seconds / 3600))
+    local minutes=$(( (total_seconds % 3600) / 60 ))
+    local seconds=$((total_seconds % 60))
+    if [[ $hours -gt 0 ]]; then
+        printf "%dh %dm %ds" "$hours" "$minutes" "$seconds"
+    elif [[ $minutes -gt 0 ]]; then
+        printf "%dm %ds" "$minutes" "$seconds"
+    else
+        printf "%ds" "$seconds"
+    fi
+}
+
 # Check dependencies
 cmd_check() {
     echo ""
@@ -322,6 +336,7 @@ find_project_root() {
 cmd_feature() {
     local feature_id="$1"
     local max_iterations="$2"
+    local start_time=$SECONDS
 
     if [[ -z "$feature_id" ]]; then
         echo -e "${RED}Error: Feature ID required${NC}"
@@ -439,6 +454,7 @@ HEADER
     echo -e "${CYAN}║  PDM Ralph Orchestrator - Feature: ${feature_id}${NC}"
     echo -e "${CYAN}╠═══════════════════════════════════════════════════════════════╣${NC}"
     echo -e "${CYAN}║  Stories: ${complete_count}/${total_stories} complete${NC}"
+    echo -e "${CYAN}║  Elapsed: $(format_elapsed $((SECONDS - start_time)))${NC}"
     echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
@@ -476,6 +492,7 @@ HEADER
 
         echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo -e "${CYAN}  Iteration $i/$max_iterations - Working on: $next_story (model: $story_model)${NC}"
+        echo -e "${CYAN}  Elapsed: $(format_elapsed $((SECONDS - start_time)))${NC}"
         echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo ""
 
@@ -566,6 +583,7 @@ Begin now. Read the prd.json first to find the next story to implement."
             echo ""
             echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════╗${NC}"
             echo -e "${GREEN}║                    ALL STORIES COMPLETE!                      ║${NC}"
+            echo -e "${GREEN}║              Total time: $(format_elapsed $((SECONDS - start_time)))${NC}"
             echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════╝${NC}"
             echo ""
 
@@ -583,7 +601,7 @@ Begin now. Read the prd.json first to find the next story to implement."
         complete_count=$((total_stories - incomplete_count))
 
         echo ""
-        echo -e "${CYAN}║  Stories: ${complete_count}/${total_stories} complete${NC}"
+        echo -e "${CYAN}║  Stories: ${complete_count}/${total_stories} complete | Elapsed: $(format_elapsed $((SECONDS - start_time)))${NC}"
         echo ""
 
         # Small delay between iterations
@@ -594,6 +612,7 @@ Begin now. Read the prd.json first to find the next story to implement."
     echo ""
     echo -e "${YELLOW}╔═══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${YELLOW}║  Max iterations ($max_iterations) reached. Some stories incomplete.${NC}"
+    echo -e "${YELLOW}║  Total time: $(format_elapsed $((SECONDS - start_time)))${NC}"
     echo -e "${YELLOW}╚═══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
