@@ -51,8 +51,8 @@ usage() {
     echo "  pdm --install              # Install all skills and commands"
     echo "  pdm --install skills       # Install only skills"
     echo "  pdm --list                 # Show installed items"
-    echo "  pdm -f add-logo            # Execute Ralph on 'add-logo' feature"
-    echo "  pdm -f add-logo --max-iterations 20"
+    echo "  pdm -f my-feature           # Execute Ralph on 'my-feature' feature"
+    echo "  pdm -f my-feature --max-iterations 20"
     echo ""
 }
 
