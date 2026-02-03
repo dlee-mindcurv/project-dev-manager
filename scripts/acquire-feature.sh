@@ -2,7 +2,7 @@
 
 # Feature Acquisition Script
 # Launches Claude Code to gather feature details and generate JTBD analysis
-# Integrates with Claude Code commands: /create-jtbd
+# Integrates with Claude Code commands: /pdm-create-jtbd
 
 set -e
 
@@ -24,7 +24,33 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Generate feature ID from name (e.g., "Add Logo" -> "add-logo")
+# Ensure PDM skills/commands are installed
+ensure_skills_installed() {
+    local command_file="$HOME/.claude/commands/pdm-create-jtbd.md"
+
+    if [[ -f "$command_file" ]]; then
+        echo -e "${GREEN}✓ PDM skills already installed${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}PDM skills not found. Installing via pdm --install...${NC}"
+
+    if [[ ! -x "$PROJECT_ROOT/pdm" ]]; then
+        echo -e "${RED}Error: pdm CLI not found at $PROJECT_ROOT/pdm${NC}"
+        exit 1
+    fi
+
+    "$PROJECT_ROOT/pdm" --install
+
+    if [[ ! -f "$command_file" ]]; then
+        echo -e "${RED}Error: PDM skill installation failed. $command_file not found after install.${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}✓ PDM skills installed successfully${NC}"
+}
+
+# Generate feature ID from name (e.g., "My Feature" -> "my-feature")
 generate_feature_id() {
     local name="$1"
     echo "$name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd '[:alnum:]-'
@@ -433,6 +459,9 @@ main() {
         exit 1
     fi
 
+    # Ensure PDM skills are installed before proceeding
+    ensure_skills_installed
+
     # Always prompt for new feature creation
     echo -e "${YELLOW}Create a new feature:${NC}"
 
@@ -458,12 +487,12 @@ main() {
     esac
 
     echo ""
-    echo -e "${BLUE}Launching Claude Code with /create-jtbd ${FEATURE_ID}...${NC}"
+    echo -e "${BLUE}Launching Claude Code with /pdm-create-jtbd ${FEATURE_ID}...${NC}"
     echo ""
 
-    # Launch Claude Code with /create-jtbd command and feature ID
+    # Launch Claude Code with /pdm-create-jtbd command and feature ID
     cd "$PROJECT_ROOT"
-    claude "/create-jtbd ${FEATURE_ID}"
+    claude "/pdm-create-jtbd ${FEATURE_ID}"
 }
 
 # Run main function
