@@ -1,3 +1,5 @@
 /.idea/
 product-development
 .claude/settings.local.json
+.claude/skills/
+.claude/commands/
