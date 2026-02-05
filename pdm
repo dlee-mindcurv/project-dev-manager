@@ -2,12 +2,19 @@
 
 # PDM - Project Dev Manager
 # Global CLI tool for autonomous feature development
-# Installs skills and commands to ~/.claude/ with pdm- prefixes
+# Installs skills and commands to project's .claude/ folder with pdm- prefixes
 
 set -e
 
 VERSION="1.0.0"
-CLAUDE_DIR="$HOME/.claude"
+
+# Find project root (git root or current directory)
+find_git_root() {
+    git rev-parse --show-toplevel 2>/dev/null || echo "$PWD"
+}
+
+PROJECT_ROOT="$(find_git_root)"
+CLAUDE_DIR="$PROJECT_ROOT/.claude"
 SKILLS_DIR="$CLAUDE_DIR/skills"
 COMMANDS_DIR="$CLAUDE_DIR/commands"
 PDM_REPO="dlee-mindcurv/pdm-tools"
@@ -30,7 +37,7 @@ usage() {
     echo "Usage: pdm <command> [options]"
     echo ""
     echo -e "${CYAN}Installation Commands:${NC}"
-    echo "  --install [type]     Install skills and commands to ~/.claude/"
+    echo "  --install [type]     Install skills and commands to project's .claude/"
     echo "                       type: 'skills', 'commands', or omit for all"
     echo "  --update             Force re-download everything"
     echo "  --uninstall          Remove all pdm-* skills and commands"
@@ -268,6 +275,7 @@ setup_prd_template() {
 **Acceptance Criteria:**
 - [ ] Specific verifiable criterion
 - [ ] Another criterion
+- [ ] Tests pass/jest coverage is 80%
 - [ ] Typecheck/lint passes
 
 ### US-002: [Title]
@@ -276,7 +284,8 @@ setup_prd_template() {
 **Acceptance Criteria:**
 - [ ] Specific verifiable criterion
 - [ ] Typecheck/lint passes
-- [ ] Verify in browser using dev-browser skill
+- [ ] Tests pass/jest coverage is 80%
+- [ ] Verify in browser using pdm-webapp-testing skill
 
 ## Functional Requirements
 
@@ -584,7 +593,7 @@ cmd_draft_feature() {
     fi
 
     # Ensure PDM skills are installed
-    local command_file="$HOME/.claude/commands/pdm-create-jtbd.md"
+    local command_file="$COMMANDS_DIR/pdm-create-jtbd.md"
     if [[ -f "$command_file" ]]; then
         echo -e "${GREEN}✓ PDM skills already installed${NC}"
     else
@@ -958,14 +967,16 @@ IMPORTANT: Read and follow these instructions exactly.
 2. Read the progress file: $progress_file (check Codebase Patterns section first)
 3. Find the highest priority user story where \"passes\": false
 4. Checkout or create the branch specified in branchName
-5. Implement ONLY that one user story
-6. Run quality checks npm run build. Only run npm run lint if it is the LAST or ONLY story in the feature
-7. Follow acceptance criteria exactly - only verify in browser if the story's criteria includes \"Verify in browser\"
-8. If ALL checks pass:
+5. Implement for ONLY that one user story.
+6. Generate/Update unit tests (for this story) and newly added or updated UI components, hooks, libraries.
+7. Run lint: npm run lint only for new UI components and their associated test scripts in this story.
+8. Run quality checks npm run build.
+9. Follow acceptance criteria exactly - only verify in browser if the story's criteria includes \"Verify in browser\"
+10. If ALL checks pass:
    - Commit with message: \"feat: [Story ID] - [Story Title]\"
    - Update prd.json: set that story's \"passes\": true
    - Append to progress.txt with what you learned
-9. If checks FAIL:
+11. If checks FAIL:
    - Do NOT commit
    - Fix the issues and retry
    - If you cannot fix after 3 attempts, update the story's \"notes\" field with the blocker
@@ -993,9 +1004,14 @@ If stories remain incomplete, just finish this iteration normally.
 
 Begin now. Read the prd.json first to find the next story to implement."
 
-        # Run Claude with model selection
-        local output
-        output=$(echo "$prompt" | claude --dangerously-skip-permissions --model "$story_model" --print 2>&1) || true
+        # Run Claude with model selection - stream to terminal and capture for parsing
+        local output_file=$(mktemp)
+        trap "rm -f '$output_file'" EXIT
+
+        echo "$prompt" | claude --dangerously-skip-permissions --model "$story_model" --print 2>&1 | tee "$output_file" || true
+
+        local output=$(cat "$output_file")
+        rm -f "$output_file"
 
         # Check for completion signal
         if echo "$output" | grep -q "<promise>COMPLETE</promise>"; then
