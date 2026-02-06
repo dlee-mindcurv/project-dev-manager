@@ -51,6 +51,12 @@ usage() {
     echo "  --build-feature, -f <id>   Run Ralph on feature"
     echo "  --max-iterations <n>  Max iterations for feature execution (default: 10)"
     echo ""
+    echo -e "${CYAN}Workspace Commands:${NC}"
+    echo "  --create-workspace <id>    Create isolated git worktree for a feature"
+    echo "  --list-workspaces          Show all workspaces with status"
+    echo "  --complete-feature <id>    Push branch and create PR to main"
+    echo "  --cleanup-workspace <id>   Remove worktree after PR merge"
+    echo ""
     echo -e "${CYAN}Meta:${NC}"
     echo "  --version, -v        Show version"
     echo "  --help, -h           Show this help message"
@@ -135,6 +141,89 @@ format_elapsed() {
     else
         printf "%ds" "$seconds"
     fi
+}
+
+# ============================================================================
+# WORKSPACE HELPERS
+# ============================================================================
+
+# Returns path to the workspace tracking file
+workspace_tracking_file() {
+    echo "$PROJECT_ROOT/.pdm-workspaces/workspaces.json"
+}
+
+# Creates the workspace directory and empty tracking JSON if missing
+init_workspace_tracking() {
+    local ws_dir="$PROJECT_ROOT/.pdm-workspaces"
+    local ws_file="$ws_dir/workspaces.json"
+
+    mkdir -p "$ws_dir"
+
+    if [[ ! -f "$ws_file" ]]; then
+        echo '{ "workspaces": [] }' > "$ws_file"
+    fi
+}
+
+# Returns the worktree path for an active workspace, or empty string if not found
+get_workspace_path() {
+    local feature_id="$1"
+    local ws_file
+    ws_file="$(workspace_tracking_file)"
+
+    if [[ ! -f "$ws_file" ]]; then
+        echo ""
+        return
+    fi
+
+    node -e "
+        const data = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+        const ws = data.workspaces.find(w => w.featureId === process.argv[2] && w.status === 'active');
+        console.log(ws ? ws.worktreePath : '');
+    " "$ws_file" "$feature_id"
+}
+
+# Upserts a workspace entry in tracking JSON
+update_workspace_tracking() {
+    local feature_id="$1"
+    local branch="$2"
+    local ws_path="$3"
+    local status="$4"
+    local pr_url="${5:-}"
+
+    init_workspace_tracking
+
+    local ws_file
+    ws_file="$(workspace_tracking_file)"
+    local timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+    node -e "
+        const fs = require('fs');
+        const file = process.argv[1];
+        const featureId = process.argv[2];
+        const branch = process.argv[3];
+        const wsPath = process.argv[4];
+        const status = process.argv[5];
+        const ts = process.argv[6];
+        const prUrl = process.argv[7] || null;
+        const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+        const idx = data.workspaces.findIndex(w => w.featureId === featureId);
+        if (idx >= 0) {
+            data.workspaces[idx].status = status;
+            data.workspaces[idx].lastBuildAt = ts;
+            if (prUrl) data.workspaces[idx].prUrl = prUrl;
+        } else {
+            data.workspaces.push({
+                featureId,
+                branch,
+                worktreePath: wsPath,
+                status,
+                createdAt: ts,
+                lastBuildAt: null,
+                prUrl: null
+            });
+        }
+        fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
+    " "$ws_file" "$feature_id" "$branch" "$ws_path" "$status" "$timestamp" "$pr_url"
 }
 
 # Create JTBD template if it doesn't exist
@@ -759,6 +848,433 @@ FEAT_EOF
 }
 
 # ============================================================================
+# WORKSPACE COMMANDS
+# ============================================================================
+
+# Create an isolated git worktree workspace for a feature
+cmd_create_workspace() {
+    local feature_id="$1"
+
+    if [[ -z "$feature_id" ]]; then
+        echo -e "${RED}Error: Feature ID required${NC}"
+        echo "Usage: pdm --create-workspace <feature-id>"
+        exit 1
+    fi
+
+    # Find project root
+    local project_root
+    if ! project_root=$(find_project_root); then
+        echo -e "${RED}Error: Could not find project with product-development/features directory${NC}"
+        exit 1
+    fi
+
+    local features_dir="$project_root/product-development/features"
+    local feature_dir="$features_dir/$feature_id"
+    local prd_json="$feature_dir/prd.json"
+
+    # Validate feature directory
+    if [[ ! -d "$feature_dir" ]]; then
+        echo -e "${RED}Error: Feature directory not found: $feature_dir${NC}"
+        exit 1
+    fi
+
+    # Validate prd.json
+    if [[ ! -f "$prd_json" ]]; then
+        echo -e "${RED}Error: prd.json not found: $prd_json${NC}"
+        echo -e "${YELLOW}Run /pdm-create-prd-json $feature_id first to generate prd.json${NC}"
+        exit 1
+    fi
+
+    # Read branch name from prd.json
+    local branch
+    branch=$(json_get "$prd_json" ".branchName")
+    if [[ -z "$branch" ]]; then
+        echo -e "${RED}Error: branchName not found in prd.json${NC}"
+        exit 1
+    fi
+
+    local ws_dir="$project_root/.pdm-workspaces"
+    local ws_path="$ws_dir/$feature_id"
+
+    # Check workspace doesn't already exist
+    local existing_path
+    existing_path=$(get_workspace_path "$feature_id")
+    if [[ -n "$existing_path" ]]; then
+        echo -e "${RED}Error: Workspace already exists for feature '$feature_id'${NC}"
+        echo -e "${YELLOW}Run 'pdm --cleanup-workspace $feature_id' first${NC}"
+        exit 1
+    fi
+
+    # Check branch doesn't already exist
+    if git -C "$project_root" rev-parse --verify "$branch" &>/dev/null; then
+        echo -e "${RED}Error: Branch '$branch' already exists${NC}"
+        echo -e "${YELLOW}Delete the branch or change branchName in prd.json${NC}"
+        exit 1
+    fi
+
+    echo ""
+    echo -e "${BLUE}Creating workspace for feature: $feature_id${NC}"
+    echo -e "${BLUE}Branch: $branch${NC}"
+    echo ""
+
+    # Stash uncommitted changes if present
+    local stashed=false
+    if ! git -C "$project_root" diff --quiet HEAD 2>/dev/null || \
+       ! git -C "$project_root" diff --cached --quiet HEAD 2>/dev/null; then
+        echo -e "${YELLOW}Stashing uncommitted changes...${NC}"
+        git -C "$project_root" stash push -m "pdm-workspace-create-$feature_id" 2>/dev/null && stashed=true
+    fi
+
+    # Create worktree
+    mkdir -p "$ws_dir"
+    echo -e "${CYAN}Creating git worktree...${NC}"
+    if ! git -C "$project_root" worktree add "$ws_path" -b "$branch" main 2>&1; then
+        echo -e "${RED}Error: Failed to create git worktree${NC}"
+        if [[ "$stashed" == "true" ]]; then
+            git -C "$project_root" stash pop 2>/dev/null || true
+        fi
+        exit 1
+    fi
+
+    # Copy gitignored content into worktree
+    echo -e "${CYAN}Copying feature configuration...${NC}"
+
+    # product-development/features/<id>/
+    mkdir -p "$ws_path/product-development/features"
+    cp -r "$feature_dir" "$ws_path/product-development/features/"
+
+    # product-development/features/status.json
+    local status_json="$features_dir/status.json"
+    if [[ -f "$status_json" ]]; then
+        cp "$status_json" "$ws_path/product-development/features/"
+    fi
+
+    # product-development/resources/
+    local resources_dir="$project_root/product-development/resources"
+    if [[ -d "$resources_dir" ]]; then
+        mkdir -p "$ws_path/product-development"
+        cp -r "$resources_dir" "$ws_path/product-development/"
+    fi
+
+    # .claude/ directory
+    local claude_dir="$project_root/.claude"
+    if [[ -d "$claude_dir" ]]; then
+        cp -r "$claude_dir" "$ws_path/"
+    fi
+
+    # LEARNINGS.md
+    if [[ -f "$project_root/LEARNINGS.md" ]]; then
+        cp "$project_root/LEARNINGS.md" "$ws_path/"
+    fi
+
+    # CLAUDE.md
+    if [[ -f "$project_root/CLAUDE.md" ]]; then
+        cp "$project_root/CLAUDE.md" "$ws_path/"
+    fi
+
+    # Run npm install for subdirectories with package.json
+    echo -e "${CYAN}Installing dependencies...${NC}"
+    for pkg_json in "$ws_path"/*/package.json; do
+        if [[ -f "$pkg_json" ]]; then
+            local pkg_dir=$(dirname "$pkg_json")
+            local pkg_name=$(basename "$pkg_dir")
+            echo -e "  Installing in $pkg_name/..."
+            (cd "$pkg_dir" && npm install 2>&1) || echo -e "${YELLOW}  Warning: npm install failed in $pkg_name/${NC}"
+        fi
+    done
+
+    # Record in tracking
+    update_workspace_tracking "$feature_id" "$branch" "$ws_path" "active"
+
+    # Pop stash if needed
+    if [[ "$stashed" == "true" ]]; then
+        echo -e "${CYAN}Restoring stashed changes...${NC}"
+        git -C "$project_root" stash pop 2>/dev/null || true
+    fi
+
+    echo ""
+    echo -e "${GREEN}✓ Workspace created: $ws_path${NC}"
+    echo -e "${GREEN}✓ Branch: $branch${NC}"
+    echo ""
+    echo -e "Run 'pdm --build-feature $feature_id' to start building."
+    echo ""
+}
+
+# List all workspaces with status
+cmd_list_workspaces() {
+    local project_root
+    if ! project_root=$(find_project_root); then
+        echo -e "${RED}Error: Could not find project with product-development/features directory${NC}"
+        exit 1
+    fi
+
+    local ws_file
+    ws_file="$(workspace_tracking_file)"
+
+    if [[ ! -f "$ws_file" ]]; then
+        echo ""
+        echo -e "${YELLOW}No workspaces found.${NC}"
+        echo "Create one with: pdm --create-workspace <feature-id>"
+        echo ""
+        return
+    fi
+
+    local count
+    count=$(node -e "
+        const data = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+        console.log(data.workspaces.length);
+    " "$ws_file")
+
+    if [[ "$count" -eq 0 ]]; then
+        echo ""
+        echo -e "${YELLOW}No workspaces found.${NC}"
+        echo "Create one with: pdm --create-workspace <feature-id>"
+        echo ""
+        return
+    fi
+
+    echo ""
+    echo -e "${BLUE}PDM Workspaces${NC}"
+    echo ""
+    printf "%-20s %-30s %-12s %-40s %s\n" "FEATURE" "BRANCH" "STATUS" "PATH" "PR"
+    printf "%-20s %-30s %-12s %-40s %s\n" "-------" "------" "------" "----" "--"
+
+    node -e "
+        const data = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+        data.workspaces.forEach(w => {
+            const pr = w.prUrl || '-';
+            console.log([w.featureId, w.branch, w.status, w.worktreePath, pr].join('|'));
+        });
+    " "$ws_file" | while IFS='|' read -r fid branch status path pr; do
+        printf "%-20s %-30s %-12s %-40s %s\n" "$fid" "$branch" "$status" "$path" "$pr"
+    done
+
+    echo ""
+}
+
+# Push branch and create PR for a completed feature
+cmd_complete_feature() {
+    local feature_id="$1"
+
+    if [[ -z "$feature_id" ]]; then
+        echo -e "${RED}Error: Feature ID required${NC}"
+        echo "Usage: pdm --complete-feature <feature-id>"
+        exit 1
+    fi
+
+    # Find project root
+    local project_root
+    if ! project_root=$(find_project_root); then
+        echo -e "${RED}Error: Could not find project with product-development/features directory${NC}"
+        exit 1
+    fi
+
+    # Look up workspace
+    local ws_path
+    ws_path=$(get_workspace_path "$feature_id")
+    if [[ -z "$ws_path" ]]; then
+        echo -e "${RED}Error: No active workspace found for feature '$feature_id'${NC}"
+        exit 1
+    fi
+
+    local prd_json="$ws_path/product-development/features/$feature_id/prd.json"
+    local progress_file="$ws_path/product-development/features/$feature_id/progress.txt"
+
+    if [[ ! -f "$prd_json" ]]; then
+        echo -e "${RED}Error: prd.json not found in workspace${NC}"
+        exit 1
+    fi
+
+    # Check if gh CLI is available
+    if ! command -v gh &> /dev/null; then
+        echo -e "${RED}Error: GitHub CLI (gh) not found${NC}"
+        echo "Install from: https://cli.github.com/"
+        exit 1
+    fi
+
+    # Check story completion status
+    local incomplete_count
+    incomplete_count=$(node -e "
+        const data = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+        console.log(data.userStories.filter(s => !s.passes).length);
+    " "$prd_json")
+
+    if [[ "$incomplete_count" -gt 0 ]]; then
+        echo -e "${YELLOW}Warning: $incomplete_count stories are still incomplete${NC}"
+        read -p "Continue anyway? [y/N] " confirm
+        if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+            echo -e "${YELLOW}Cancelled.${NC}"
+            exit 0
+        fi
+    fi
+
+    # Read branch and feature info
+    local branch
+    branch=$(json_get "$prd_json" ".branchName")
+    local feature_name
+    feature_name=$(json_get "$prd_json" ".featureName")
+    local feature_desc
+    feature_desc=$(json_get "$prd_json" ".description")
+
+    echo ""
+    echo -e "${BLUE}Completing feature: $feature_id${NC}"
+    echo ""
+
+    # Push branch
+    echo -e "${CYAN}Pushing branch '$branch' to origin...${NC}"
+    if ! git -C "$ws_path" push -u origin "$branch" 2>&1; then
+        echo -e "${RED}Error: Failed to push branch${NC}"
+        exit 1
+    fi
+
+    # Build PR body with story checklist
+    local story_checklist
+    story_checklist=$(node -e "
+        const data = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+        data.userStories.forEach(s => {
+            const check = s.passes ? 'x' : ' ';
+            console.log('- [' + check + '] ' + s.id + ': ' + s.title);
+        });
+    " "$prd_json")
+
+    local pr_title="feat: $feature_name"
+    # Truncate title to 70 chars
+    if [[ ${#pr_title} -gt 70 ]]; then
+        pr_title="${pr_title:0:67}..."
+    fi
+
+    echo -e "${CYAN}Creating pull request...${NC}"
+    local pr_url
+    pr_url=$(cd "$ws_path" && gh pr create --base main --head "$branch" \
+        --title "$pr_title" \
+        --body "$(cat <<EOF
+## Summary
+
+$feature_desc
+
+## Stories
+
+$story_checklist
+
+## Feature
+
+ID: \`$feature_id\`
+Branch: \`$branch\`
+EOF
+    )" 2>&1)
+
+    if [[ $? -ne 0 ]]; then
+        echo -e "${RED}Error creating PR: $pr_url${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}✓ Pull request created: $pr_url${NC}"
+
+    # Sync prd.json and progress.txt back to main's product-development/
+    local main_feature_dir="$project_root/product-development/features/$feature_id"
+    mkdir -p "$main_feature_dir"
+    cp "$prd_json" "$main_feature_dir/"
+    if [[ -f "$progress_file" ]]; then
+        cp "$progress_file" "$main_feature_dir/"
+    fi
+    echo -e "${GREEN}✓ Synced progress files back to main${NC}"
+
+    # Update tracking
+    update_workspace_tracking "$feature_id" "$branch" "$ws_path" "completed" "$pr_url"
+
+    echo ""
+    echo -e "${GREEN}✓ Feature '$feature_id' completed!${NC}"
+    echo -e "PR: $pr_url"
+    echo ""
+    echo -e "After PR is merged, run: pdm --cleanup-workspace $feature_id"
+    echo ""
+}
+
+# Remove a workspace worktree and clean up
+cmd_cleanup_workspace() {
+    local feature_id="$1"
+    local force_flag="${2:-}"
+
+    if [[ -z "$feature_id" ]]; then
+        echo -e "${RED}Error: Feature ID required${NC}"
+        echo "Usage: pdm --cleanup-workspace <feature-id>"
+        exit 1
+    fi
+
+    # Find project root
+    local project_root
+    if ! project_root=$(find_project_root); then
+        echo -e "${RED}Error: Could not find project with product-development/features directory${NC}"
+        exit 1
+    fi
+
+    # Look up workspace path from tracking
+    local ws_file
+    ws_file="$(workspace_tracking_file)"
+    local ws_path=""
+
+    if [[ -f "$ws_file" ]]; then
+        ws_path=$(node -e "
+            const data = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+            const ws = data.workspaces.find(w => w.featureId === process.argv[2] && w.status !== 'removed');
+            console.log(ws ? ws.worktreePath : '');
+        " "$ws_file" "$feature_id")
+    fi
+
+    if [[ -z "$ws_path" ]]; then
+        echo -e "${RED}Error: No active or completed workspace found for feature '$feature_id'${NC}"
+        exit 1
+    fi
+
+    echo ""
+    echo -e "${BLUE}Cleaning up workspace for feature: $feature_id${NC}"
+    echo ""
+
+    # Sync progress files back to main before removal
+    local main_feature_dir="$project_root/product-development/features/$feature_id"
+    local ws_feature_dir="$ws_path/product-development/features/$feature_id"
+    if [[ -d "$ws_feature_dir" ]]; then
+        mkdir -p "$main_feature_dir"
+        for file in prd.json progress.txt; do
+            if [[ -f "$ws_feature_dir/$file" ]]; then
+                cp "$ws_feature_dir/$file" "$main_feature_dir/"
+            fi
+        done
+        echo -e "${GREEN}✓ Synced progress files back to main${NC}"
+    fi
+
+    # Remove worktree
+    echo -e "${CYAN}Removing worktree...${NC}"
+    local remove_args=""
+    if [[ "$force_flag" == "--force" ]]; then
+        remove_args="--force"
+    fi
+
+    if ! git -C "$project_root" worktree remove "$ws_path" $remove_args 2>&1; then
+        echo -e "${RED}Error: Failed to remove worktree${NC}"
+        echo -e "${YELLOW}Try: pdm --cleanup-workspace $feature_id --force${NC}"
+        exit 1
+    fi
+
+    # Prune worktrees
+    git -C "$project_root" worktree prune 2>/dev/null || true
+
+    # Update tracking
+    local branch
+    branch=$(node -e "
+        const data = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+        const ws = data.workspaces.find(w => w.featureId === process.argv[2]);
+        console.log(ws ? ws.branch : '');
+    " "$ws_file" "$feature_id")
+
+    update_workspace_tracking "$feature_id" "$branch" "$ws_path" "removed"
+
+    echo ""
+    echo -e "${GREEN}✓ Workspace removed for feature: $feature_id${NC}"
+    echo ""
+}
+
+# ============================================================================
 # FEATURE EXECUTION (Ralph Orchestrator)
 # ============================================================================
 
@@ -795,13 +1311,44 @@ cmd_build_feature() {
         exit 1
     fi
 
-    local features_dir="$project_root/product-development/features"
+    # Workspace detection and auto-creation
+    local using_workspace=false
+    local effective_root="$project_root"
+    local ws_path
+    ws_path=$(get_workspace_path "$feature_id")
+
+    if [[ -z "$ws_path" ]]; then
+        # Validate feature exists on main before trying to create workspace
+        local main_feature_dir="$project_root/product-development/features/$feature_id"
+        local main_prd="$main_feature_dir/prd.json"
+        if [[ ! -d "$main_feature_dir" ]]; then
+            echo -e "${RED}Error: Feature directory not found: $main_feature_dir${NC}"
+            exit 1
+        fi
+        if [[ ! -f "$main_prd" ]]; then
+            echo -e "${RED}Error: prd.json not found: $main_prd${NC}"
+            echo -e "${YELLOW}Run /pdm-create-prd-json $feature_id first to generate prd.json${NC}"
+            exit 1
+        fi
+
+        echo -e "${YELLOW}No workspace found for '$feature_id'. Creating one...${NC}"
+        cmd_create_workspace "$feature_id"
+        ws_path=$(get_workspace_path "$feature_id")
+    fi
+
+    if [[ -n "$ws_path" ]]; then
+        effective_root="$ws_path"
+        using_workspace=true
+        echo -e "${GREEN}✓ Using workspace: $ws_path${NC}"
+    fi
+
+    local features_dir="$effective_root/product-development/features"
     local feature_dir="$features_dir/$feature_id"
     local prd_json="$feature_dir/prd.json"
     local progress_file="$feature_dir/progress.txt"
     local last_branch_file="$feature_dir/.last-branch"
     local archive_dir="$feature_dir/archive"
-    local project_learnings="$project_root/LEARNINGS.md"
+    local project_learnings="$effective_root/LEARNINGS.md"
 
     # Validate feature directory
     if [[ ! -d "$feature_dir" ]]; then
@@ -956,17 +1503,31 @@ Apply relevant patterns from previous features to this implementation.
 "
         fi
 
+        # Build workspace-specific instructions
+        local branch_instruction="4. Checkout or create the branch specified in branchName"
+        local workspace_context=""
+        if [[ "$using_workspace" == "true" ]]; then
+            branch_instruction="4. The feature branch is already checked out in this workspace. Do NOT run git checkout or git switch."
+            workspace_context="
+## Workspace Context
+
+You are running inside an isolated git worktree workspace at: $effective_root
+The feature branch is already checked out. Do NOT switch branches.
+All file paths are relative to this workspace directory.
+"
+        fi
+
         # Build prompt
         local prompt="You are executing the PDM Ralph autonomous agent loop for feature: $feature_id
 $learnings_instruction
 IMPORTANT: Read and follow these instructions exactly.
-
+$workspace_context
 ## Your Task This Iteration
 
 1. Read the PRD file: $prd_json
 2. Read the progress file: $progress_file (check Codebase Patterns section first)
 3. Find the highest priority user story where \"passes\": false
-4. Checkout or create the branch specified in branchName
+$branch_instruction
 5. Implement for ONLY that one user story.
 6. Generate/Update unit tests (for this story) and newly added or updated UI components, hooks, libraries.
 7. Run lint: npm run lint only for new UI components and their associated test scripts in this story.
@@ -1008,7 +1569,11 @@ Begin now. Read the prd.json first to find the next story to implement."
         local output_file=$(mktemp)
         trap "rm -f '$output_file'" EXIT
 
-        echo "$prompt" | claude --dangerously-skip-permissions --model "$story_model" --print 2>&1 | tee "$output_file" || true
+        if [[ "$using_workspace" == "true" ]]; then
+            (cd "$effective_root" && echo "$prompt" | claude --dangerously-skip-permissions --model "$story_model" --print 2>&1) | tee "$output_file" || true
+        else
+            echo "$prompt" | claude --dangerously-skip-permissions --model "$story_model" --print 2>&1 | tee "$output_file" || true
+        fi
 
         local output=$(cat "$output_file")
         rm -f "$output_file"
@@ -1040,6 +1605,12 @@ Begin now. Read the prd.json first to find the next story to implement."
             # Print final status
             total_stories=$(json_array_length "$prd_json" ".userStories")
             echo "Stories: $total_stories/$total_stories complete"
+
+            if [[ "$using_workspace" == "true" ]]; then
+                echo ""
+                echo -e "${BLUE}Next step: Review the code, then run:${NC}"
+                echo -e "  pdm --complete-feature $feature_id"
+            fi
             exit 0
         fi
 
@@ -1084,6 +1655,7 @@ FEATURE_ID=""
 FEATURE_NAME=""
 COMMAND=""
 INSTALL_TYPE=""
+FORCE_FLAG=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -1123,6 +1695,29 @@ while [[ $# -gt 0 ]]; do
         --build-feature|-f)
             COMMAND="build-feature"
             FEATURE_ID="$2"
+            shift 2
+            ;;
+        --create-workspace)
+            COMMAND="create-workspace"
+            FEATURE_ID="$2"
+            shift 2
+            ;;
+        --list-workspaces)
+            COMMAND="list-workspaces"
+            shift
+            ;;
+        --complete-feature)
+            COMMAND="complete-feature"
+            FEATURE_ID="$2"
+            shift 2
+            ;;
+        --cleanup-workspace)
+            COMMAND="cleanup-workspace"
+            FEATURE_ID="$2"
+            if [[ -n "$3" && "$3" == "--force" ]]; then
+                FORCE_FLAG="--force"
+                shift
+            fi
             shift 2
             ;;
         --max-iterations)
@@ -1167,6 +1762,18 @@ case $COMMAND in
         ;;
     build-feature)
         cmd_build_feature "$FEATURE_ID" "$MAX_ITERATIONS"
+        ;;
+    create-workspace)
+        cmd_create_workspace "$FEATURE_ID"
+        ;;
+    list-workspaces)
+        cmd_list_workspaces
+        ;;
+    complete-feature)
+        cmd_complete_feature "$FEATURE_ID"
+        ;;
+    cleanup-workspace)
+        cmd_cleanup_workspace "$FEATURE_ID" "$FORCE_FLAG"
         ;;
     "")
         usage
