@@ -12,6 +12,8 @@ Feature Idea → JTBD Analysis → PRD → prd.json → Generated Code
 
 Each step builds on the previous, ensuring requirements are well-understood before implementation begins. The final step uses Claude to autonomously implement user stories, running quality checks and committing code as it progresses.
 
+PDM commands (slash commands for Claude Code) are maintained in a separate repository: [dlee-mindcurv/pdm-tools](https://github.com/dlee-mindcurv/pdm-tools). The `pdm` CLI downloads and installs them into your project's `.claude/` directory.
+
 ## Quick Start
 
 ### 1. Install PDM
@@ -21,7 +23,7 @@ Each step builds on the previous, ensuring requirements are well-understood befo
 curl -sL https://raw.githubusercontent.com/dlee-mindcurv/project-dev-manager/main/pdm -o ~/.local/bin/pdm
 chmod +x ~/.local/bin/pdm
 
-# Install skills and commands to ~/.claude/
+# Install commands to your project's .claude/ folder
 pdm --install
 
 # Verify installation
@@ -39,15 +41,23 @@ claude
 > /pdm-create-jtbd my-feature
 > /pdm-create-prd my-feature
 > /pdm-create-prd-json my-feature
-
-# Execute autonomous implementation
-> /pdm-ralph-execute my-feature
 ```
 
-Or use the CLI directly:
+### 3. Execute Autonomous Implementation
+
+Via CLI:
 
 ```bash
 pdm --build-feature my-feature
+```
+
+Or with workspace isolation for parallel development:
+
+```bash
+pdm --create-workspace my-feature    # Create isolated git worktree
+pdm --build-feature my-feature       # Run from workspace
+pdm --complete-feature my-feature    # Push branch and create PR
+pdm --cleanup-workspace my-feature   # Remove worktree after merge
 ```
 
 ## Prerequisites
@@ -68,7 +78,8 @@ pdm --build-feature my-feature
 curl -sL https://raw.githubusercontent.com/dlee-mindcurv/project-dev-manager/main/pdm -o ~/.local/bin/pdm
 chmod +x ~/.local/bin/pdm
 
-# Install PDM skills and commands
+# Install PDM commands to your project's .claude/ folder
+cd your-project
 pdm --install
 ```
 
@@ -82,20 +93,22 @@ cd project-dev-manager
 # Symlink pdm to your PATH
 ln -s $(pwd)/pdm ~/.local/bin/pdm
 
-# Install skills and commands
+# Install commands to your project
+cd your-project
 pdm --install
 ```
+
+**Note:** `pdm --install` downloads commands from the [pdm-tools](https://github.com/dlee-mindcurv/pdm-tools) repository and installs them to your project's `.claude/commands/` directory. This is project-local, not global.
 
 ## PDM CLI Commands
 
 ### Installation Commands
 
 ```bash
-pdm --install              # Install all skills and commands to ~/.claude/
-pdm --install skills       # Install only skills
+pdm --install              # Install commands to project's .claude/
 pdm --install commands     # Install only commands
 pdm --update               # Force re-download everything
-pdm --uninstall            # Remove all pdm-* skills and commands
+pdm --uninstall            # Remove all pdm-* commands from project
 ```
 
 ### Info Commands
@@ -105,11 +118,21 @@ pdm --list                 # Show installed pdm-* items
 pdm --check                # Verify dependencies (Claude CLI, Node, Git, curl)
 ```
 
-### Feature Execution
+### Feature Lifecycle
 
 ```bash
-pdm --build-feature <id>   # Run PDM Ralph on a feature
+pdm --draft-feature [name]        # Create a new feature (interactive if no name given)
+pdm --build-feature <id>          # Run PDM Ralph on a feature
 pdm -f <id> --max-iterations <n>  # With custom iteration limit
+```
+
+### Workspace Commands
+
+```bash
+pdm --create-workspace <id>    # Create isolated git worktree for a feature
+pdm --list-workspaces          # Show all workspaces with status
+pdm --complete-feature <id>    # Push branch and create PR to main
+pdm --cleanup-workspace <id>   # Remove worktree after PR merge
 ```
 
 ### Meta
@@ -123,24 +146,13 @@ pdm --help
 
 After running `pdm --install`, these commands are available in Claude Code:
 
-| Command | Description |
-|---------|-------------|
-| `/pdm-create-jtbd <feature-id>` | Generate Jobs-to-be-Done analysis |
-| `/pdm-create-prd <feature-id>` | Generate Product Requirements Document |
-| `/pdm-create-prd-json <feature-id>` | Convert PRD to machine-readable JSON |
-| `/pdm-ralph-execute <feature-id>` | Run autonomous code generation |
-| `/pdm-code-review` | Comprehensive code quality review |
-| `/pdm-create-prp` | Create Product Requirement Prompt |
+| Command                             | Description                            |
+|-------------------------------------|----------------------------------------|
+| `/pdm-create-jtbd <feature-id>`     | Generate Jobs-to-be-Done analysis      |
+| `/pdm-create-prd <feature-id>`      | Generate Product Requirements Document |
+| `/pdm-create-prd-json <feature-id>` | Convert PRD to machine-readable JSON   |
 
-## Installed Skills
-
-| Skill | Description |
-|-------|-------------|
-| `pdm-ralph` | PRD to prd.json converter |
-| `pdm-ralph-loop` | Iteration loop instructions |
-| `pdm-webapp-testing` | Browser verification with Playwright |
-| `pdm-code-reviewer` | Code review toolkit |
-| `pdm-react-best-practices` | React/Next.js optimization patterns |
+Commands are sourced from the [pdm-tools](https://github.com/dlee-mindcurv/pdm-tools) repository and installed into your project's `.claude/commands/` directory.
 
 ## Project Structure
 
@@ -148,6 +160,13 @@ For PDM to work in your project, create this structure:
 
 ```
 your-project/
+├── .claude/
+│   └── commands/           # PDM slash commands (installed by pdm --install)
+│       ├── pdm-create-jtbd.md
+│       ├── pdm-create-prd.md
+│       └── pdm-create-prd-json.md
+├── .pdm-workspaces/        # Workspace tracking (auto-created)
+│   └── workspaces.json
 ├── product-development/
 │   ├── resources/          # Templates and product docs
 │   │   ├── product.md          # Product overview
@@ -167,7 +186,15 @@ your-project/
 
 ### 1. Define a Feature
 
-Create a feature directory with a basic description:
+Use the CLI to create a new feature (interactive or with a name):
+
+```bash
+pdm --draft-feature "My Feature"
+# Creates product-development/features/my-feature/feature.md
+# Updates product-development/features/status.json
+```
+
+Or create the directory manually:
 
 ```bash
 mkdir -p product-development/features/my-feature
@@ -197,13 +224,7 @@ In Claude Code:
 
 ### 3. Execute Autonomous Generation
 
-In Claude Code:
-
-```
-/pdm-ralph-execute my-feature
-```
-
-Or via CLI:
+Via CLI:
 
 ```bash
 pdm --build-feature my-feature
@@ -216,6 +237,29 @@ The generator:
 4. Commits on success
 5. Updates prd.json status
 6. Loops until all stories pass
+
+### 4. Workspace Isolation (Optional)
+
+For parallel feature development, use workspaces to create isolated git worktrees:
+
+```bash
+# Create an isolated workspace for the feature
+pdm --create-workspace my-feature
+
+# Build the feature in its workspace
+pdm --build-feature my-feature
+
+# When done, push branch and create a PR
+pdm --complete-feature my-feature
+
+# After PR is merged, clean up the worktree
+pdm --cleanup-workspace my-feature
+
+# View all workspaces and their status
+pdm --list-workspaces
+```
+
+Workspaces are tracked in `.pdm-workspaces/workspaces.json` at the project root.
 
 ## Configuration
 
@@ -239,14 +283,15 @@ Each iteration runs these checks before committing:
 ## Example Session
 
 ```bash
-# 1. Create feature idea
-mkdir -p product-development/features/dark-mode
-echo "# Feature: Dark Mode Toggle" > product-development/features/dark-mode/feature.md
+# 1. Create feature idea (interactive or with name)
+pdm --draft-feature "Dark Mode Toggle"
+# Creates product-development/features/dark-mode/ with feature.md
 
 # 2. In Claude Code, generate documentation
 > /pdm-create-jtbd dark-mode
-# Creates jtbd.md, then chains to...
-# /pdm-create-prd dark-mode
+# Creates jtbd.md
+
+> /pdm-create-prd dark-mode
 # Creates prd.md
 
 # 3. Convert to executable format
@@ -254,8 +299,7 @@ echo "# Feature: Dark Mode Toggle" > product-development/features/dark-mode/feat
 # Creates prd.json with consolidated stories
 
 # 4. Generate the code
-> /pdm-ralph-execute dark-mode
-# Or: pdm --build-feature dark-mode
+pdm --build-feature dark-mode
 
 # Output:
 # ╔═══════════════════════════════════════════════════════════════╗
@@ -263,6 +307,24 @@ echo "# Feature: Dark Mode Toggle" > product-development/features/dark-mode/feat
 # ╚═══════════════════════════════════════════════════════════════╝
 # Stories: 1/1 complete
 # Branch: feature/dark-mode
+```
+
+### Example with Workspace Isolation
+
+```bash
+# 1. Create an isolated workspace
+pdm --create-workspace dark-mode
+# Creates git worktree at ../project-dev-manager-ws-dark-mode/
+
+# 2. Build the feature
+pdm --build-feature dark-mode
+
+# 3. Ship it
+pdm --complete-feature dark-mode
+# Pushes branch and creates PR
+
+# 4. Clean up after merge
+pdm --cleanup-workspace dark-mode
 ```
 
 ## Troubleshooting
@@ -283,10 +345,10 @@ Run `/pdm-create-prd-json <feature-id>` to generate it from the PRD.
 - Fix issues in the codebase
 - Re-run to continue from where it left off
 
-### Skills/commands not available
+### Commands not available
 
 ```bash
-# Re-install PDM tools
+# Re-install PDM commands
 pdm --update
 
 # Verify installation
@@ -296,7 +358,7 @@ pdm --list
 ## Uninstalling
 
 ```bash
-# Remove PDM skills and commands
+# Remove PDM commands from current project
 pdm --uninstall
 
 # Remove the CLI

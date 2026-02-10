@@ -39,3 +39,31 @@ PDM="$PROJECT_ROOT/pdm"
     assert_failure
     assert_output --partial "Error: Unknown option"
 }
+
+@test "argument_parsing: --create-workspace shows error without feature ID" {
+    run bash "$PDM" --create-workspace
+    assert_failure
+}
+
+@test "argument_parsing: --list-workspaces is recognized (no error)" {
+    # list-workspaces with no product-development dir will show "No workspaces"
+    # or error about project root - either way it should not say "Unknown option"
+    run bash "$PDM" --list-workspaces
+    refute_output --partial "Error: Unknown option"
+}
+
+@test "argument_parsing: --complete-feature shows error without feature ID" {
+    run bash "$PDM" --complete-feature
+    assert_failure
+}
+
+@test "argument_parsing: --cleanup-workspace shows error without feature ID" {
+    run bash "$PDM" --cleanup-workspace
+    assert_failure
+}
+
+@test "argument_parsing: --help output includes Workspace Commands section" {
+    run bash "$PDM" --help
+    assert_success
+    assert_output --partial "Workspace Commands"
+}
