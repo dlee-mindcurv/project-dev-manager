@@ -17,8 +17,8 @@ PROJECT_ROOT="$(find_git_root)"
 CLAUDE_DIR="$PROJECT_ROOT/.claude"
 SKILLS_DIR="$CLAUDE_DIR/skills"
 COMMANDS_DIR="$CLAUDE_DIR/commands"
-PDM_REPO="dlee-mindcurv/pdm-tools"
-RAW_BASE="https://raw.githubusercontent.com/$PDM_REPO/main"
+PDM_REPO="dlee-mindcurv/cc-automation-tools"
+RAW_BASE="https://raw.githubusercontent.com/$PDM_REPO/main/project-dev-manager"
 ARCHIVE_URL="https://github.com/$PDM_REPO/archive/refs/heads/main.tar.gz"
 
 # Colors for output
@@ -521,7 +521,7 @@ cmd_install() {
 
     # Create temp directory for download
     local tmp_dir=$(mktemp -d)
-    local archive_file="$tmp_dir/pdm-tools.tar.gz"
+    local archive_file="$tmp_dir/cc-automation-tools.tar.gz"
     local extract_dir="$tmp_dir/extracted"
 
     # Download archive
@@ -536,10 +536,19 @@ cmd_install() {
     mkdir -p "$extract_dir"
     tar -xzf "$archive_file" -C "$extract_dir"
 
-    # Find extracted directory (usually pdm-tools-main)
-    local src_dir=$(find "$extract_dir" -maxdepth 1 -type d -name "pdm-tools-*" | head -1)
+    # Find extracted directory (usually cc-automation-tools-main)
+    local src_dir=$(find "$extract_dir" -maxdepth 1 -type d -name "cc-automation-tools-*" | head -1)
 
     if [[ -z "$src_dir" || ! -d "$src_dir" ]]; then
+        echo -e "${RED}Error: Could not find extracted content${NC}"
+        rm -rf "$tmp_dir"
+        exit 1
+    fi
+
+    # Navigate into the project-dev-manager subdirectory
+    src_dir="$src_dir/project-dev-manager"
+
+    if [[ ! -d "$src_dir" ]]; then
         echo -e "${RED}Error: Could not find extracted content${NC}"
         rm -rf "$tmp_dir"
         exit 1
