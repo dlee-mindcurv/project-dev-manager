@@ -710,7 +710,7 @@ cmd_draft_feature() {
         echo ""
 
         local feature_description=""
-        while IFS= read -r line; do
+        while IFS= read -e -r line; do
             [[ -z "$line" ]] && break
             feature_description+="$line"$'\n'
         done
@@ -752,7 +752,7 @@ FEAT_EOF
         echo "  2) Reference an existing feature file"
         echo "  3) Cancel"
         echo ""
-        read -p "Select an option [1-3]: " choice
+        read -e -p "Select an option [1-3]: " choice
 
         case $choice in
             1)
@@ -760,7 +760,7 @@ FEAT_EOF
                 echo -e "${BLUE}Enter feature details:${NC}"
                 echo ""
 
-                read -p "Feature name: " feature_name
+                read -e -p "Feature name: " feature_name
                 if [[ -z "$feature_name" ]]; then
                     echo -e "${RED}Error: Feature name cannot be empty${NC}"
                     exit 1
@@ -774,7 +774,7 @@ FEAT_EOF
                 echo ""
 
                 local feature_description=""
-                while IFS= read -r line; do
+                while IFS= read -e -r line; do
                     [[ -z "$line" ]] && break
                     feature_description+="$line"$'\n'
                 done
@@ -809,7 +809,7 @@ FEAT_EOF
                 ;;
             2)
                 echo ""
-                read -p "Enter the path to the existing feature file: " file_path
+                read -e -p "Enter the path to the existing feature file: " file_path
                 file_path="${file_path/#\~/$HOME}"
 
                 if [[ ! -f "$file_path" ]]; then
@@ -818,7 +818,7 @@ FEAT_EOF
                 fi
 
                 echo ""
-                read -p "Enter a name for this feature (used to generate ID): " feature_name
+                read -e -p "Enter a name for this feature (used to generate ID): " feature_name
                 if [[ -z "$feature_name" ]]; then
                     echo -e "${RED}Error: Feature name cannot be empty${NC}"
                     exit 1
@@ -1105,7 +1105,7 @@ cmd_complete_feature() {
 
     if [[ "$incomplete_count" -gt 0 ]]; then
         echo -e "${YELLOW}Warning: $incomplete_count stories are still incomplete${NC}"
-        read -p "Continue anyway? [y/N] " confirm
+        read -e -p "Continue anyway? [y/N] " confirm
         if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
             echo -e "${YELLOW}Cancelled.${NC}"
             exit 0
