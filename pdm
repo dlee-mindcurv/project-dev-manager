@@ -364,8 +364,6 @@ setup_prd_template() {
 **Acceptance Criteria:**
 - [ ] Specific verifiable criterion
 - [ ] Another criterion
-- [ ] Tests pass/jest coverage is 80%
-- [ ] Typecheck/lint passes
 
 ### US-002: [Title]
 **Description:** As a [user], I want [feature] so that [benefit].
@@ -373,8 +371,6 @@ setup_prd_template() {
 **Acceptance Criteria:**
 - [ ] Specific verifiable criterion
 - [ ] Typecheck/lint passes
-- [ ] Tests pass/jest coverage is 80%
-- [ ] Verify in browser using pdm-webapp-testing skill
 
 ## Functional Requirements
 

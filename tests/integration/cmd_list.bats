@@ -17,13 +17,13 @@ teardown() {
 }
 
 @test "cmd_list: skills installed lists them" {
-    mkdir -p "$SKILLS_DIR/pdm-ralph"
-    mkdir -p "$SKILLS_DIR/pdm-review"
+    mkdir -p "$SKILLS_DIR/pdm-test-skill-a"
+    mkdir -p "$SKILLS_DIR/pdm-test-skill-b"
 
     run cmd_list
     assert_success
-    assert_output --partial "pdm-ralph"
-    assert_output --partial "pdm-review"
+    assert_output --partial "pdm-test-skill-a"
+    assert_output --partial "pdm-test-skill-b"
 }
 
 @test "cmd_list: commands installed lists them with / prefix" {
@@ -37,15 +37,15 @@ teardown() {
 }
 
 @test "cmd_list: only shows pdm-* items, ignores others" {
-    mkdir -p "$SKILLS_DIR/pdm-ralph"
+    mkdir -p "$SKILLS_DIR/pdm-test-skill-a"
     mkdir -p "$SKILLS_DIR/other-skill"
-    touch "$COMMANDS_DIR/pdm-review.md"
+    touch "$COMMANDS_DIR/pdm-create-prd-json.md"
     touch "$COMMANDS_DIR/something-else.md"
 
     run cmd_list
     assert_success
-    assert_output --partial "pdm-ralph"
-    assert_output --partial "/pdm-review"
+    assert_output --partial "pdm-test-skill-a"
+    assert_output --partial "/pdm-create-prd-json"
     refute_output --partial "other-skill"
     refute_output --partial "something-else"
 }
