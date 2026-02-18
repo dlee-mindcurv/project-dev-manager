@@ -11,30 +11,30 @@ teardown() {
 }
 
 @test "cmd_uninstall: removes pdm-* skills and commands" {
-    mkdir -p "$SKILLS_DIR/pdm-ralph"
-    mkdir -p "$SKILLS_DIR/pdm-review"
+    mkdir -p "$SKILLS_DIR/pdm-test-skill-a"
+    mkdir -p "$SKILLS_DIR/pdm-test-skill-b"
     touch "$COMMANDS_DIR/pdm-create-prd.md"
 
     run cmd_uninstall
     assert_success
 
-    assert [ ! -d "$SKILLS_DIR/pdm-ralph" ]
-    assert [ ! -d "$SKILLS_DIR/pdm-review" ]
+    assert [ ! -d "$SKILLS_DIR/pdm-test-skill-a" ]
+    assert [ ! -d "$SKILLS_DIR/pdm-test-skill-b" ]
     assert [ ! -f "$COMMANDS_DIR/pdm-create-prd.md" ]
 }
 
 @test "cmd_uninstall: does not remove non-pdm items" {
-    mkdir -p "$SKILLS_DIR/pdm-ralph"
+    mkdir -p "$SKILLS_DIR/pdm-test-skill-a"
     mkdir -p "$SKILLS_DIR/other-skill"
-    touch "$COMMANDS_DIR/pdm-review.md"
+    touch "$COMMANDS_DIR/pdm-create-prd-json.md"
     touch "$COMMANDS_DIR/something-else.md"
 
     run cmd_uninstall
     assert_success
 
-    assert [ ! -d "$SKILLS_DIR/pdm-ralph" ]
+    assert [ ! -d "$SKILLS_DIR/pdm-test-skill-a" ]
     assert [ -d "$SKILLS_DIR/other-skill" ]
-    assert [ ! -f "$COMMANDS_DIR/pdm-review.md" ]
+    assert [ ! -f "$COMMANDS_DIR/pdm-create-prd-json.md" ]
     assert [ -f "$COMMANDS_DIR/something-else.md" ]
 }
 
