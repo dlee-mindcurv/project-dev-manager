@@ -721,6 +721,10 @@ cmd_draft_feature() {
             exit 1
         fi
 
+        echo ""
+        read -e -p "Application directory path [.]: " app_dir
+        app_dir="${app_dir:-.}"
+
         # Create feature directory and file
         local feature_dir="$features_dir/$feature_id"
         mkdir -p "$feature_dir"
@@ -731,6 +735,10 @@ cmd_draft_feature() {
 ## Description
 
 $feature_description
+
+## Configuration
+
+- Application Directory: $app_dir
 
 ## Status
 
@@ -785,6 +793,10 @@ FEAT_EOF
                     exit 1
                 fi
 
+                echo ""
+                read -e -p "Application directory path [.]: " app_dir
+                app_dir="${app_dir:-.}"
+
                 # Create feature directory and file
                 local feature_dir="$features_dir/$feature_id"
                 mkdir -p "$feature_dir"
@@ -795,6 +807,10 @@ FEAT_EOF
 ## Description
 
 $feature_description
+
+## Configuration
+
+- Application Directory: $app_dir
 
 ## Status
 
@@ -825,9 +841,22 @@ FEAT_EOF
                 fi
 
                 feature_id=$(generate_feature_id "$feature_name")
+
+                echo ""
+                read -e -p "Application directory path [.]: " app_dir
+                app_dir="${app_dir:-.}"
+
                 local feature_dir="$features_dir/$feature_id"
                 mkdir -p "$feature_dir"
                 cp "$file_path" "$feature_dir/feature.md"
+
+                # Append Configuration section to copied file
+                cat >> "$feature_dir/feature.md" << FEAT_EOF
+
+## Configuration
+
+- Application Directory: $app_dir
+FEAT_EOF
                 echo -e "${GREEN}✓ Copied feature file to: $feature_dir/feature.md${NC}"
                 update_status_json "$status_json" "$feature_id" "$feature_name" "OPEN"
                 echo -e "${GREEN}✓ Updated status.json with feature: $feature_id${NC}"
