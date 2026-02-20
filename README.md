@@ -12,7 +12,7 @@ Feature Idea → JTBD Analysis → PRD → prd.json → Generated Code
 
 Each step builds on the previous, ensuring requirements are well-understood before implementation begins. The final step uses Claude to autonomously implement user stories, running quality checks and committing code as it progresses.
 
-PDM commands (slash commands for Claude Code) are maintained in a separate repository: [cc-automation-tools](https://github.com/dlee-mindcurv/cc-automation-tools/tree/main/project-dev-manager). The `pdm` CLI downloads and installs them into your project's `.claude/` directory.
+PDM commands (slash commands for Claude Code) are maintained in this repository under `.claude/commands/`. The `pdm` CLI downloads and installs them into your project's `.claude/` directory.
 
 ## Quick Start
 
@@ -99,7 +99,7 @@ cd your-project
 pdm --install
 ```
 
-**Note:** `pdm --install` downloads commands from the [cc-automation-tools](https://github.com/dlee-mindcurv/cc-automation-tools/tree/main/project-dev-manager) repository and installs them to your project's `.claude/commands/` directory. This is project-local, not global.
+**Note:** `pdm --install` downloads commands from this repository and installs them to your project's `.claude/commands/` directory. This is project-local, not global.
 
 ## PDM CLI Commands
 
@@ -153,7 +153,7 @@ After running `pdm --install`, these commands are available in Claude Code:
 | `/pdm-create-prd <feature-id>`      | Generate Product Requirements Document |
 | `/pdm-create-prd-json <feature-id>` | Convert PRD to machine-readable JSON   |
 
-Commands are sourced from the [cc-automation-tools](https://github.com/dlee-mindcurv/cc-automation-tools/tree/main/project-dev-manager) repository and installed into your project's `.claude/commands/` directory.
+Commands are sourced from this repository and installed into your project's `.claude/commands/` directory.
 
 ## Project Structure
 
