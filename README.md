@@ -63,11 +63,12 @@ pdm --cleanup-workspace my-feature   # Remove worktree after merge
 ## Prerequisites
 
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
-- Node.js 18+ (for Next.js projects)
+- Node.js 18+ (for JSON processing and Next.js projects)
 - Git
 - curl (for installation)
+- [GitHub CLI](https://cli.github.com/) (`gh`) — required for `--complete-feature` (PR creation)
 
-**Note:** `jq` is no longer required - PDM uses Node.js for JSON processing.
+**Note:** `jq` is no longer required — PDM uses Node.js for JSON processing.
 
 ## Installation
 
@@ -173,8 +174,9 @@ your-project/
 │   │   ├── JTBD-template.md    # JTBD template
 │   │   └── PRD-template.md     # PRD template
 │   └── features/           # Feature workspaces
+│       ├── status.json         # Feature registry
 │       └── <feature-id>/
-│           ├── feature.md      # Initial feature description
+│           ├── feature.md      # Initial feature description + configuration
 │           ├── jtbd.md         # Jobs-to-be-Done analysis
 │           ├── prd.md          # Product Requirements Document
 │           ├── prd.json        # Machine-readable stories
@@ -190,8 +192,29 @@ Use the CLI to create a new feature (interactive or with a name):
 
 ```bash
 pdm --draft-feature "My Feature"
+# Prompts for: description, application directory path
 # Creates product-development/features/my-feature/feature.md
 # Updates product-development/features/status.json
+# Launches Claude Code with /pdm-create-jtbd
+```
+
+The generated `feature.md` includes a Configuration section with the application directory path, which flows into `prd.json` during conversion:
+
+```markdown
+# Feature: My Feature
+
+## Description
+
+Your feature description here.
+
+## Configuration
+
+- Application Directory: ./my-app
+
+## Status
+
+- Created: 2026-02-20 10:00:00
+- Status: Draft
 ```
 
 Or create the directory manually:
@@ -205,9 +228,13 @@ cat > product-development/features/my-feature/feature.md << 'EOF'
 
 Brief description of what you want to build.
 
+## Configuration
+
+- Application Directory: .
+
 ## Status
 
-- Created: $(date '+%Y-%m-%d %H:%M:%S')
+- Created: 2026-02-20 10:00:00
 - Status: Draft
 EOF
 ```
@@ -222,6 +249,8 @@ In Claude Code:
 /pdm-create-prd-json my-feature # Converts PRD to executable JSON
 ```
 
+Each command auto-chains to the next, so starting with `/pdm-create-jtbd` runs the full pipeline.
+
 ### 3. Execute Autonomous Generation
 
 Via CLI:
@@ -230,13 +259,14 @@ Via CLI:
 pdm --build-feature my-feature
 ```
 
-The generator:
-1. Creates/checks out the feature branch
-2. Implements one user story per iteration
-3. Runs quality checks (build, lint, browser verification)
-4. Commits on success
-5. Updates prd.json status
-6. Loops until all stories pass
+The Ralph agent loop:
+1. Auto-creates a workspace (git worktree) if none exists
+2. Selects the highest-priority story where `passes: false`
+3. Spawns a fresh Claude instance with the story's assigned model
+4. Claude implements the story, runs quality checks, and commits on success
+5. Updates `prd.json` status and appends learnings to `progress.txt`
+6. Loops until all stories pass or max iterations reached
+7. On completion, appends codebase patterns to `LEARNINGS.md`
 
 ### 4. Workspace Isolation (Optional)
 
@@ -259,13 +289,13 @@ pdm --cleanup-workspace my-feature
 pdm --list-workspaces
 ```
 
-Workspaces are tracked in `.pdm-workspaces/workspaces.json` at the project root.
+Workspaces are tracked in `.pdm-workspaces/workspaces.json` at the project root. Each workspace gets a full copy of `product-development/`, `.claude/`, `CLAUDE.md`, and `LEARNINGS.md`. Dependencies are installed automatically (`npm install`).
 
 ## Configuration
 
 ### Model Selection
 
-Stories in prd.json can specify which Claude model to use:
+Stories in `prd.json` can specify which Claude model to use:
 
 | Model | Use For |
 |-------|---------|
@@ -273,32 +303,81 @@ Stories in prd.json can specify which Claude model to use:
 | `sonnet` | Standard features, moderate complexity (default) |
 | `opus` | Complex architecture, nuanced decisions |
 
-### Quality Gates
+### prd.json Schema
 
-Each iteration runs these checks before committing:
-- TypeScript compilation (`npm run build`)
-- Linting (`npm run lint`) - final story only
-- Browser verification (UI stories) - final story only
+```json
+{
+  "project": "my-project",
+  "appDir": ".",
+  "branchName": "feature/my-feature",
+  "description": "Feature description",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Story title",
+      "description": "As a user, I want...",
+      "acceptanceCriteria": ["Criterion 1", "Criterion 2"],
+      "priority": 1,
+      "model": "sonnet",
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
+```
+
+### Story Complexity Assessment
+
+The PRD-to-JSON converter automatically assesses feature complexity and consolidates stories:
+
+| Complexity | Files Changed | Stories | Approach |
+|------------|---------------|---------|----------|
+| Trivial | 1-2 files | 1 story | Consolidate all into single story |
+| Small | 3-5 files | 1-2 stories | Consolidate related work |
+| Medium | 6-10 files | 3-4 stories | Group by layer (backend/frontend) |
+| Large | 10+ files | 5+ stories | Full story breakdown |
+
+## Testing
+
+PDM includes a comprehensive BATS test suite:
+
+```bash
+# Run all tests
+./tests/run_tests.sh
+```
+
+### Test Coverage
+
+**Unit tests** (`tests/unit/`):
+- `generate_feature_id.bats` — Feature ID slug generation (8 cases)
+- `format_elapsed.bats` — Time formatting for seconds/minutes/hours (7 cases)
+- `find_project_root.bats` — Project root directory detection (4 cases)
+- `json_helpers.bats` — Node.js-based JSON read/query operations (7 cases)
+- `update_status_json.bats` — Feature status registry management (4 cases)
+- `setup_templates.bats` — JTBD and PRD template creation and idempotency (4 cases)
+- `workspace_helpers.bats` — Workspace tracking init/update/query (8 cases)
+
+**Integration tests** (`tests/integration/`):
+- `argument_parsing.bats` — CLI flag parsing and help output (10 cases)
+- `cmd_check.bats` — Dependency verification (5 cases)
+- `cmd_list.bats` — Installed item listing (4 cases)
+- `cmd_uninstall.bats` — Clean removal of PDM items (3 cases)
+- `workspace_lifecycle.bats` — Full worktree create/list/cleanup/complete cycle (14 cases)
+- `workspace_build_feature.bats` — Auto-workspace creation and prompt generation (4 cases)
 
 ## Example Session
 
 ```bash
 # 1. Create feature idea (interactive or with name)
 pdm --draft-feature "Dark Mode Toggle"
+# Prompts for description and application directory path
 # Creates product-development/features/dark-mode/ with feature.md
 
 # 2. In Claude Code, generate documentation
 > /pdm-create-jtbd dark-mode
-# Creates jtbd.md
+# Creates jtbd.md → auto-chains to prd.md → auto-chains to prd.json
 
-> /pdm-create-prd dark-mode
-# Creates prd.md
-
-# 3. Convert to executable format
-> /pdm-create-prd-json dark-mode
-# Creates prd.json with consolidated stories
-
-# 4. Generate the code
+# 3. Generate the code
 pdm --build-feature dark-mode
 
 # Output:
@@ -314,7 +393,7 @@ pdm --build-feature dark-mode
 ```bash
 # 1. Create an isolated workspace
 pdm --create-workspace dark-mode
-# Creates git worktree at ../project-dev-manager-ws-dark-mode/
+# Creates git worktree at .pdm-workspaces/dark-mode/
 
 # 2. Build the feature
 pdm --build-feature dark-mode
@@ -337,7 +416,7 @@ Run `/pdm-create-prd-json <feature-id>` to generate it from the PRD.
 
 - Check `progress.txt` in the feature directory for blockers
 - Review the `notes` field in incomplete stories
-- Fix issues manually and re-run
+- Fix issues manually and re-run with `pdm -f <id> --max-iterations <n>`
 
 ### "Quality checks failing"
 
