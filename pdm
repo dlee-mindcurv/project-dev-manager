@@ -6,7 +6,7 @@
 
 set -e
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 # Find project root (git root or current directory)
 find_git_root() {
